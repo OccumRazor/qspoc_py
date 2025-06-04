@@ -1,0 +1,17 @@
+LICENSE
+README.md
+setup.py
+qspoc_py/J_T_local.py
+qspoc_py/Krotov_API.py
+qspoc_py/QDYN_config.py
+qspoc_py/config_task.py
+qspoc_py/fft_main.py
+qspoc_py/krotov_runner.py
+qspoc_py/localTools.py
+qspoc_py/propagation_method.py
+qspoc_py/read_write.py
+qspoc_py/task_obj.py
+qspoc_py.egg-info/PKG-INFO
+qspoc_py.egg-info/SOURCES.txt
+qspoc_py.egg-info/dependency_links.txt
+qspoc_py.egg-info/top_level.txt

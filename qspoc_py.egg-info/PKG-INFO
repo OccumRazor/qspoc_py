@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: qspoc_py
+Version: 1.0
+Summary: Provides state propagation and control optimization functions
+Author: Yitian Wang
+Author-email: cyitianwang@gmail.com
+License-File: LICENSE
