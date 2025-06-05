@@ -1,4 +1,4 @@
-import read_write
+from . import read_write
 from scipy.fft import fft,fftfreq
 import matplotlib.pyplot as plt,numpy as np
 from scipy.interpolate import interp1d

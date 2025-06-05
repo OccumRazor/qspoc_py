@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.special import jv,j0,j1
 from scipy.sparse import csr_matrix
+from scipy.linalg import expm,ishermitian
 
 '''.vscode\
   !! * :cite:`Tal-EzerJCP84`
@@ -29,7 +30,14 @@ def Bessel_function(num,k,lower_bound=1e-17):
         coefficient += coe_amp
     return coefficient
 
+def expm(herm_mat,initial_state,dt,backwards = False):
+    if isinstance(herm_mat,list):herm_mat=np.array(herm_mat)
+    if backwards: Ut = expm(1j * herm_mat * dt)
+    else: Ut = expm(-1j * herm_mat * dt)
+    return Ut.dot(initial_state)
+
 def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,sparsity,backwards = False):
+    if not ishermitian(herm_mat):print('herm_mat is not hermitian')
     if isinstance(herm_mat,list):herm_mat=np.array(herm_mat)
     if sparsity > 0.85:herm_mat = csr_matrix(herm_mat)
     Delta = E_max - E_min

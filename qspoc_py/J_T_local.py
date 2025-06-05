@@ -1,8 +1,6 @@
-import numpy as np,math,qutip,random,copy,os,localTools,scipy,read_write
+import numpy as np
 
 def tau(state,ref):
-    if isinstance(state,qutip.Qobj):state = state.full()
-    if isinstance(ref,qutip.Qobj):ref=ref.full()
     res=0j
     for i in range(len(state)):
         res+=state[i]*np.conjugate(ref[i])
@@ -37,9 +35,6 @@ def JT_tau(states,refs):
 
 def chis_ss(states,refs):
     if isinstance(states,list):
-        for i in range(len(states)):
-            if isinstance(states[i],qutip.Qobj):states[i] = states[i].full()
-            if isinstance(refs[i],qutip.Qobj):refs[i] = refs[i].full()
         chis = []
         for i in range(len(states)):
             chis.append(tau(states[i],refs[i]) * refs[i])
@@ -62,6 +57,7 @@ def JT_ss(states,refs):
         return 1-np.real(tau_val*np.conjugate(tau_val))
 
 
+'''
 def localFidelity(state,ref='None'):
     if isinstance(state,qutip.Qobj):state=state.full()
     if isinstance(ref,qutip.Qobj):ref=ref.full()
@@ -80,7 +76,9 @@ def J_T_inFidelity(fw_states_T,objectives,tau_vals=None,**kwargs):
     return inFidelity(state,localTools.densityMatrix(ref))
 def inFidelity(state,ref=False):
     return 1-localFidelity(state,ref)
-
 def functional_master(functional_name):
     if functional_name == 'inFidelity' or 'JT_ss':
         return [chis_inFidelity,J_T_inFidelity,inFidelity]
+
+'''
+

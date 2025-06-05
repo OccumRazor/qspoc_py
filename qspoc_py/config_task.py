@@ -1,4 +1,5 @@
-import read_write,numpy as np,localTools,re,qutip,task_obj
+from . import read_write,localTools,task_obj
+import re
 from collections import defaultdict
 from scipy.interpolate import interp1d
 
@@ -112,10 +113,9 @@ def config_prop(path,zero_base = True):
             Ham_pulse_Table.append(False)
         for key in config['ham']['main'].keys():
             Hamiltonian_info[i][key] = config['ham']['main'][key]
-    Hamiltonian = [[qutip.Qobj(read_write.matrixReader(path+Hamiltonian_info[i]['filename'],int(Hamiltonian_info[i]['dim']),zero_base)),lambda t,args:localTools.random_guess(t,args)
+    Hamiltonian = [[read_write.matrixReader(path+Hamiltonian_info[i]['filename'],int(Hamiltonian_info[i]['dim']),zero_base),lambda t,args:localTools.random_guess(t,args)
                     ] if 'pulse_id' in Hamiltonian_info[i].keys() else
-                    qutip.Qobj(read_write.matrixReader(path+Hamiltonian_info[i]['filename'],int(Hamiltonian_info[i]['dim']),zero_base)
-                    )for i in range(len(Hamiltonian_info))]
+                    read_write.matrixReader(path+Hamiltonian_info[i]['filename'],int(Hamiltonian_info[i]['dim']),zero_base) for i in range(len(Hamiltonian_info))]
     pulse_options = {}
     for i in range(len(pulses_info)):
         pulse_id = pulses_info[i]['pulse_id']
@@ -126,7 +126,7 @@ def config_prop(path,zero_base = True):
     for i in range(len(config['psi']['subsections'])):
         if config['psi']['subsections'][i]['label'] == 'initial':
             state = read_write.stateReader(path+config['psi']['subsections'][i]['filename'],int(config['ham']['main']['dim']),zero_base)
-            initial_states.append(qutip.Qobj(state))
+            initial_states.append(state)
     prop_obj = task_obj.Propagation(Hamiltonian,tlist,prop_method,initial_states,'pulse_initial',pulse_options)
     prop_obj.tlist_long = detupleTlist
     return prop_obj,config
@@ -144,17 +144,13 @@ def config_opt(path,zero_base = True):
     for i in range(len(config['psi']['subsections'])):
         if config['psi']['subsections'][i]['label'] == 'final':
             state = read_write.stateReader(path+config['psi']['subsections'][i]['filename'],int(config['ham']['main']['dim']),zero_base)
-            target_states.append(qutip.Qobj(state))
+            target_states.append(state)
     if len(target_states):
         opt_obj.set_target_states(target_states)
     if 'observables' in config.keys():
         observables = []
         for i in range(len(config['observables']['subsections'])):
             observable = read_write.matrixReader(path+config['observables']['subsections'][i]['filename'],int(config['ham']['main']['dim']),zero_base)
-        observables.append(qutip.Qobj(observable))
+        observables.append(observable)
         opt_obj.set_observables(observables)
     return opt_obj,config
-
-#print(parse_config_with_subsections(f'control_source/21.0/config'))
-#config_opt('control_source/rf0/')
-#config_task(f'control_source/21.0/')

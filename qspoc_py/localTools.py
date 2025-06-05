@@ -1,7 +1,6 @@
-import math,  random, os, shutil, numpy as np,qutip,time,scipy,krotov,read_write
+import random, os, numpy as np,time,scipy
 from scipy.interpolate import interp1d
-from scipy.sparse import coo_matrix
-
+from . import read_write
 
 def del_redundent(folder,black_list):
     files = os.listdir(folder)
@@ -20,9 +19,40 @@ def read_oct_iters(working_folder,delta_JT = False):
     if delta_JT:return [this_JTS[-1],(this_JTS[-2]-this_JTS[-1])/this_JTS[-1]]
     return this_JTS[-1]
 
+def flattop(t, t_start, t_stop, t_rise, t_fall):
+    if t_start <= t <= t_stop:
+        f = 1.0
+        if t <= t_start + t_rise:
+            f = blackman(t, t_start, t_start + 2 * t_rise)
+        elif t >= t_stop - t_fall:
+            f = blackman(t, t_stop - 2 * t_fall, t_stop)
+        return f
+    else:
+        return 0.0
+
+def box(t, t_start, t_stop):
+    if t < t_start:
+        return 0.0
+    if t > t_stop:
+        return 0.0
+    return 1.0
+
+def blackman(t, t_start, t_stop, a=0.16):
+    T = t_stop - t_start
+    box_vec = np.vectorize(box)
+    return (
+        0.5
+        * box_vec(t, t_start, t_stop)
+        * (
+            1.0
+            - a
+            - np.cos(2.0 * np.pi * (t - t_start) / T)
+            + a * np.cos(4.0 * np.pi * (t - t_start) / T)
+        )
+    )
+
 def S(t,t_start,t_stop,t_rise,t_fall):
-    """Scales the Krotov methods update of the pulse value at the time t"""
-    return krotov.shapes.flattop(t, t_start=t_start, t_stop=t_stop, t_rise=t_rise, t_fall=t_fall, func='blackman')
+    return flattop(t, t_start=t_start, t_stop=t_stop, t_rise=t_rise, t_fall=t_fall)
 
 def half_step_tlist(qdyn_tlist):
     if len(qdyn_tlist) == 3:qdyn_tlist=qdyn_tlist[1:]
@@ -130,16 +160,6 @@ def fastKron(iptString):
         kronMat = np.kron(kronMat, sq_dict[thisKey])
     return np.array(kronMat)
 
-
-def densityMatrix(state):
-    #print(state)
-    if not isinstanceVector(state):
-        return state
-    if isinstance(state[0], list) or isinstance(state[0], np.ndarray):
-        state = list(np.array(state).T[0])
-    return np.outer(np.conjugate(state),state)
-
-
 def isinstanceVector(state):
     # this function check whether the state is a ket/bra or not.
     if not isinstance(state, list) and not isinstance(state, np.ndarray):
@@ -148,6 +168,16 @@ def isinstanceVector(state):
         return 1
     return 0
 
+def densityMatrix(state):
+    if not isinstanceVector(state):
+        return state
+    if isinstance(state[0], list) or isinstance(state[0], np.ndarray):
+        state = list(np.array(state).T[0])
+    dm = np.zeros([len(state),len(state)],dtype=np.complex128)
+    for i in range(len(state)):
+        for j in range(len(state)):
+            dm[i][j] = complex(state[i] * np.conjugate(state[j]))
+    return np.array(dm)
 
 def canoGHZGen(num_qubit, canoLabel, phi = 0):
     # Variable canoLabel can be either a label like 3+ or a pure state 010

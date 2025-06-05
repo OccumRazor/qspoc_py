@@ -1,5 +1,6 @@
-import krotov,numpy as np,J_T_local,localTools,qutip,config_task,Krotov_API
+import krotov,numpy as np,qutip
 from functools import partial
+from . import J_T_local,localTools,config_task,Krotov_API
 
 def random_guess(t,control_args):
     fit_func=control_args.get('fit_func')

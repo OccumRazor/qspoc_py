@@ -1,11 +1,12 @@
-import read_write,numpy as np,localTools,time,qutip,Krotov_API,krotov,J_T_local,propagation_method,copy,matplotlib.pyplot as plt,random
+import numpy as np,time,copy,matplotlib.pyplot as plt,random
+from . import localTools,read_write,propagation_method
 from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
 from scipy.sparse.linalg import eigsh
 from scipy.sparse import csr_matrix
 
-str2float_keys = ['lambda_a','t_start','t_stop','t_rise','t_fall']
+str2float_keys = ['oct_lambda_a','t_start','t_stop','t_rise','t_fall']
 
 def sort_property(ipt_list):
     text_content = ''
@@ -48,6 +49,7 @@ def dict2string(ipt_dict):
     return text_content
 
 def E_min_max(Hamiltonian,tlist,pulse_options,oct_increase_factor = 1):
+    Hamiltonian = copy.deepcopy(Hamiltonian)
     assert isinstance(Hamiltonian,list) and len(Hamiltonian) > 0
     if isinstance(Hamiltonian[0],list):
         p_0 = Hamiltonian[0][1](tlist,pulse_options[Hamiltonian[0][1]]['args'])
@@ -64,13 +66,14 @@ def E_min_max(Hamiltonian,tlist,pulse_options,oct_increase_factor = 1):
         else:
             H_min += H_i
             H_max += H_i
-    eig_vals_0 = eigsh(H_min.full(),return_eigenvectors=False)
-    eig_vals_1 = eigsh(H_max.full(),return_eigenvectors=False)
+    eig_vals_0 = eigsh(H_min,return_eigenvectors=False)
+    eig_vals_1 = eigsh(H_max,return_eigenvectors=False)
     E_min = min([min(eig_vals_0),min(eig_vals_1)])
     E_max = max([max(eig_vals_0),max(eig_vals_1)])
     return E_max,E_min
 
 def H_t(Hamiltonian,t,pulse_options,update_table=None):
+    Hamiltonian = copy.deepcopy(Hamiltonian)
     assert isinstance(Hamiltonian,list) and len(Hamiltonian) > 0
     if isinstance(Hamiltonian[0],list):
         Ht = Hamiltonian[0][1](t,pulse_options[Hamiltonian[0][1]]['args']) * Hamiltonian[0][0]
@@ -88,6 +91,7 @@ def H_t(Hamiltonian,t,pulse_options,update_table=None):
     return Ht
 
 def sparsity(Hamiltonian):
+    Hamiltonian = copy.deepcopy(Hamiltonian)
     assert isinstance(Hamiltonian,list) and len(Hamiltonian) > 0
     if isinstance(Hamiltonian[0],list):
         Hr = random.random() * Hamiltonian[0][0]
@@ -98,7 +102,7 @@ def sparsity(Hamiltonian):
             Hr += random.random() * H_i[0]
         else:
             Hr += H_i
-    Hr = csr_matrix(Hr.full())
+    Hr = csr_matrix(Hr)
     return 1 - Hr.nnz/(Hr.shape[0] * Hr.shape[1])
 
 class Propagation:
@@ -133,13 +137,13 @@ class Propagation:
                     candidate_dict[sub_k] = float(sub_v)
                 else:
                     candidate_dict[sub_k] = sub_v
-            if 'lambda_a' in v.keys():
+            if 'oct_lambda_a' in v.keys():
                 candidate_dict['update_shape']=partial(localTools.S,t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=candidate_dict['t_rise'],t_fall=candidate_dict['t_fall'])
                 self.pulse_options[k]['update_shape']=candidate_dict['update_shape']
             candidate_dict['t_start']=ipt_tlist[0]
             candidate_dict['t_stop']=ipt_tlist[1]
             converted_options[k] = candidate_dict
-            #converted_options[k] = dict(lambda_a=float(v['lambda_a']),update_shape=partial(localTools.S,
+            #converted_options[k] = dict(oct_lambda_a=float(v['oct_lambda_a']),update_shape=partial(localTools.S,
             #                        t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=float(v['t_rise']), t_fall=float(v['t_fall'])),t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=float(v['t_rise']), t_fall=float(v['t_fall']),args=v['args'])
             #self.pulse_options[k]['update_shape']=converted_options[k]['update_shape']
         self.Krotov_pulse_ops =  converted_options
@@ -148,43 +152,38 @@ class Propagation:
         psi_0 = copy.deepcopy(psi_0)
         dt = self.tlist_long[1] - self.tlist_long[0]
         Ht = H_t(self.Hamiltonian,t,self.pulse_options)
-        Ht = Ht.full()
         for i in range(self.n_states):
-            if isinstance(psi_0[i],qutip.Qobj):psi_0[i]=psi_0[i].full()
-            psi_0[i] = qutip.Qobj(propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,sparsity = self.sparsity,backwards=backwards))
+            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,sparsity = self.sparsity,backwards=backwards)
         return psi_0
 
     def propagate_sg_update(self,dt,t,psi_0,chis):
         psi_0 = copy.deepcopy(psi_0)
         update_table = {}
         dt = self.tlist_long[1] - self.tlist_long[0]
-        for i in range(self.n_states):
-            psi_0[i] = psi_0[i].full()
         state_size = psi_0[0].size
         for i in range(self.n_states):
-            chis[i] = np.reshape(chis[i].full(),(state_size))
+            chis[i] = np.reshape(chis[i],(state_size))
         update_return = []
         ga_return = []
         for k in range(len(self.Hamiltonian)):
             if isinstance(self.Hamiltonian[k],list):
                 control_k_update_amp = 0
-                Hk = self.Hamiltonian[k][0].full()
+                Hk = self.Hamiltonian[k][0]
                 pulse_k = self.Hamiltonian[k][1]
                 update_shape_k_t = self.Krotov_pulse_ops[pulse_k]['update_shape'](t)
-                lambda_a_k = self.Krotov_pulse_ops[pulse_k]['lambda_a']
-                if lambda_a_k and update_shape_k_t != 0:
+                oct_lambda_a_k = self.Krotov_pulse_ops[pulse_k]['oct_lambda_a']
+                if oct_lambda_a_k and update_shape_k_t != 0:
                     for i in range(self.n_states):
                         #Hk_psi = np.matmul(Hk,psi_0[i])
                         Hk_psi = Hk.dot(psi_0[i])
                         control_k_update_amp += np.linalg.norm(chis[i],2) * np.imag(np.inner(np.conjugate(chis[i]),np.reshape(Hk_psi,(state_size))))
-                control_k_update_amp *= update_shape_k_t / lambda_a_k
+                control_k_update_amp *= update_shape_k_t / oct_lambda_a_k
                 update_table[pulse_k] = control_k_update_amp
                 ga_return.append(control_k_update_amp * dt)
                 update_return.append(control_k_update_amp+pulse_k(t,self.Krotov_pulse_ops[pulse_k]['args']))
         Ht = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
-        Ht = Ht.full()
         for i in range(self.n_states):
-            psi_0[i] = qutip.Qobj(propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,sparsity = self.sparsity))
+            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,sparsity = self.sparsity)
         return psi_0,update_return,ga_return
 
     def propagate(self,backwards=False,store_states = False,update=False,chis_t=None,prop_options: dict = {}):
@@ -215,11 +214,17 @@ class Propagation:
 
     def update_control(self,new_controls):
         for i in range(len(new_controls)):
-            new_fit = interp1d(
+            self.pulse_options[self.Hamiltonian[i+1][1]]['args']["fit_func"] = interp1d(
                 self.tlist_long, new_controls[i], kind="cubic", fill_value="extrapolate")
-            self.pulse_options[self.Hamiltonian[i+1][1]]['args']["fit_func"] = new_fit
         self.krotov_pulse_options()
         self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
+
+    def obtain_pulse(self):
+        pulses = []
+        for Hi in self.Hamiltonian:
+            if isinstance(Hi,list):
+                pulses.append(Hi[1](self.tlist_long,self.pulse_options[Hi[1]]['args']))
+        return pulses
 
     def plot_pulses(self,ipt_controls = None):
         if ipt_controls:
@@ -314,12 +319,22 @@ class Optimization:
 
     def update_control(self,new_controls,store_key = False):
         if store_key == 'all':
+            if len(self.stored_controls) == 0:
+                self.stored_controls.append(self.prop.obtain_pulse())
             self.stored_controls.append(new_controls)
         if store_key == 'last':
             if len(self.stored_controls) < 2:
                 self.stored_controls.append(new_controls)
             else:self.stored_controls = [self.stored_controls[-1],new_controls]
         self.prop.update_control(new_controls)
+
+    def plot_sotred_pulses(self):
+        alphas = np.linspace(0.1,1,len(self.stored_controls))
+        colors = ['r','g','b','c','m','y']
+        for i in range(len(self.stored_controls)):
+            for j in range(len(self.stored_controls[i])):
+                plt.plot(self.prop.tlist_long,self.stored_controls[i][j],color=colors[j],alpha=alphas[i])
+        plt.show()
 
     def config(self,path,zero_base = True):
         path_Path = Path(path)
@@ -357,7 +372,7 @@ class Optimization:
             control_text = read_write.control2text(self.prop.tlist_long,opt_result.optimized_controls[i])
             with open(runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
                 pulse_f.write(control_text)
-        state_text = read_write.state2text(opt_result.states[-1].full())
+        state_text = read_write.state2text(opt_result.states[-1])
         with open(runfolder+'psi_final_after_oct.dat','w') as state_f:
             state_f.write(state_text)
 
@@ -371,6 +386,7 @@ class Optimization:
             with open(runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
                 pulse_f.write(control_text)
 
+    '''
     def Krotov_run(self,runfolder,functional_name):
         path_Path = Path(runfolder)
         path_Path.mkdir(exist_ok=True,parents=True)
@@ -401,6 +417,7 @@ class Optimization:
         out_file.close()
         self.write2runfolder(runfolder,opt_result)
         return opt_result
+    '''
 
 
     def Krotov_optimization(self,chi_constructor,JT,runfolder = None):
@@ -416,9 +433,9 @@ class Optimization:
         print(f'{' ' * (iter_str_len - 4)}iter{' ' * 4}JT{' ' * 12}ΔJT{' ' * 11}ga_int{' ' * 8}Δt')
         print(f'{' ' * (iter_str_len-1)}0{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{0:.8f}{' ' * 4}{0:.8f}{' ' * 4}{tac - tic:.2f}')
         pulse_options = {}
-        ga_bound = 2
+        ga_bound = 20
         for k,v in self.prop.pulse_options.items():
-            pulse_options[k] = {'lambda_a':v['lambda_a'],'shape_function':partial(krotov.shapes.flattop,t_start=self.prop.tlist[0], t_stop=self.prop.tlist[1], t_rise=float(v['t_rise']), t_fall=float(v['t_fall']), func='blackman')}
+            pulse_options[k] = {'oct_lambda_a':v['oct_lambda_a'],'shape_function':partial(localTools.flattop,t_start=self.prop.tlist[0], t_stop=self.prop.tlist[1], t_rise=float(v['t_rise']), t_fall=float(v['t_fall']))}
         for iters in range(1,self.oct_info['iter_stop'] + 1):
             chis_T = chi_constructor(psi_T,self.target_states)
             tic = time.time()
@@ -434,12 +451,11 @@ class Optimization:
             psi_T_last_step = copy.deepcopy(psi_T)
             JT_iter.append(JT(psi_T,self.target_states))
             print(f'{' ' * (iter_str_len - len(str(iters)))}{iters}{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{JT_iter[-2] - JT_iter[-1]:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{tac - tic:.2f}')
-            self.update_control(new_controls)
+            self.update_control(new_controls,'all')
             #self.prop.plot_pulses()
             if JT_iter[-1] < self.oct_info['JT_conv'] or (JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
                 print(f'stop condition met (JT_iter[-1] < {self.oct_info['JT_conv']}: {JT_iter[-1] < self.oct_info['JT_conv']}, (JT_iter[-2] - JT_iter[-1]) < {self.oct_info['delta_JT_conv']}): {(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']}, break')
                 break
-        #print(psi_T)
         if runfolder:
             self.write2runfolder2(runfolder,psi_T,new_controls,False)
         return JT_iter,psi_T
@@ -457,13 +473,11 @@ class Optimization:
             if isinstance(Hamiltonian[i],list):
                 id_pulse = []
                 id_ga = 0
-                if isinstance(Hamiltonian[i][0],qutip.Qobj):H_i = Hamiltonian[i][0].full()
-                else:H_i = Hamiltonian[i][0]
                 for j in range(len(tlist)):
                     Delta_it = 0
                     for k in range(n_states):
                         Delta_it += np.real(-1j * dt * np.trace(np.matmul(lambda_t[j][k],
-                                    np.matmul(H_i,psi_t[j][k])-np.matmul(psi_t[j][k],H_i))))
+                                    np.matmul(Hamiltonian[i][0],psi_t[j][k])-np.matmul(psi_t[j][k],Hamiltonian[i][0]))))
                     id_pulse.append(Hamiltonian[i][1](tlist[j],pulse_options[Hamiltonian[i][1]]['args'])-pulse_options[Hamiltonian[i][1]]['update_shape'](tlist[j])*epsilon*Delta_it)
                     id_ga += np.abs(epsilon*Delta_it)
                 new_pulses.append(id_pulse)

@@ -1,6 +1,7 @@
 from pathlib import Path
-import time, qutip, qdyn, qdyn.model, qdyn.pulse, os, subprocess, numpy as np,platform,localTools,J_T_local,csv,read_write
+import time, qutip, qdyn, qdyn.model, qdyn.pulse, os, subprocess, numpy as np,platform,csv
 import datetime
+from . import localTools,J_T_local,read_write
 
 def addHam2model(num_qubit,Ham_num,tgrid,control_source,endTime,header,n_levels = False,dissipation=False,continue_from=False):
     ham_info = localTools.hamiltonian_info(num_qubit, Ham_num)
