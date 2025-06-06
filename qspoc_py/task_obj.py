@@ -1,5 +1,5 @@
 import numpy as np,time,copy,matplotlib.pyplot as plt,random
-from . import localTools,read_write,propagation_method
+from . import localTools,read_write,propagation_method,fft_main
 from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
@@ -131,7 +131,10 @@ class Propagation:
             ipt_tlist = self.tlist
         for k,v in self.pulse_options.items():
             if 'oct_lambda_a' in v.keys():
-                self.pulse_options[k]['update_shape']=partial(localTools.S,t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=self.pulse_options[k]['t_rise'],t_fall=self.pulse_options[k]['t_fall'])
+                if 'oct_shape' not in v.keys():
+                    self.pulse_options[k]['oct_shape'] = 'flattop'
+                if self.pulse_options[k]['oct_shape'] == 'flattop':
+                    self.pulse_options[k]['update_shape']=partial(localTools.S,t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=self.pulse_options[k]['t_rise'],t_fall=self.pulse_options[k]['t_fall'])
 
     def change_lambda_a(self,change_factor,approach = 1):
         if approach:
@@ -453,7 +456,7 @@ class Optimization:
     '''
 
 
-    def Krotov_optimization(self,chi_constructor,JT,runfolder = None):
+    def Krotov_optimization(self,chi_constructor,JT,runfolder = None, monotonic = False):
         self.store_initial_controls()
         JT_iter = []
         tic = time.time()
@@ -484,6 +487,10 @@ class Optimization:
             chis_t.reverse()
             psi_T,new_controls,ga_int = self.prop.propagate(False,False,True,chis_t)
             tac = time.time()
+            for H_i in self.prop.Hamiltonian:
+                if isinstance(H_i,list):
+                    if self.prop.pulse_options[H_i[1]]['oct_lambda_a'] and 'fft_filter' in self.prop.pulse_options[H_i[1]].keys():
+                        new_controls[H_i[1]] = fft_main.fft_filter(H_i[1],self.prop.pulse_options[H_i[1]]['fft_filter'])
             if ga_int > ga_bound:
                 print(f'ga_int ({ga_int}) > {ga_bound}, new_controls not updated, break.')
                 self.prop.plot_pulses(new_controls)

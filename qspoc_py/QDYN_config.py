@@ -1,47 +1,118 @@
 from pathlib import Path
 import time, qutip, qdyn, qdyn.model, qdyn.pulse, os, subprocess, numpy as np,platform,csv
 import datetime
-from . import localTools,J_T_local,read_write
+from . import localTools,J_T_local,read_write,task_obj
 
-def addHam2model(num_qubit,Ham_num,tgrid,control_source,endTime,header,n_levels = False,dissipation=False,continue_from=False):
-    ham_info = localTools.hamiltonian_info(num_qubit, Ham_num)
-    num_correct_pulses = sum(ham_info) - ham_info[0]
-    num_pulses = 0
-    while num_pulses != num_correct_pulses:
-        H = localTools.hamiltonian(num_qubit, Ham_num=Ham_num,n_levels = n_levels,dissipation = dissipation)
-        if continue_from:
-            control_args = localTools.control_generator_S2L(
-                num_qubit, Ham_num, control_source, endTime, header)
+def addHam2model(Hamiltonian,pulse_options,tgrid):
+    model = qdyn.model.LevelModel()
+    pulse_id = 0
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            id_pulse_opts = pulse_options[H_i[1]]
+            if "oct_increase_factor" not in id_pulse_opts.keys():
+                id_pulse_opts["oct_increase_factor"] = 1
+            if "oct_pulse_min" not in id_pulse_opts.keys():
+                id_pulse_opts["oct_pulse_min"] = -1000
+            if "oct_pulse_max" not in id_pulse_opts.keys():
+                id_pulse_opts["oct_pulse_max"] = 1000
+            model.add_ham(
+                H_i[0],
+                pulse=qdyn.pulse.Pulse(
+                    tgrid,
+                    amplitude=H_i[1](tgrid, pulse_options[H_i[1]]['args']),
+                    time_unit="iu",
+                    ampl_unit="iu",
+                    # is_complex="True",
+                    config_attribs={
+                        "filename": f'pulse_initial_{pulse_id}.dat',
+                        "oct_shape": id_pulse_opts["oct_shape"],
+                        "t_rise": id_pulse_opts["t_rise"],
+                        "t_fall": id_pulse_opts["t_rise"],
+                        "oct_increase_factor": id_pulse_opts["oct_increase_factor"],
+                        "oct_pulse_min": id_pulse_opts["oct_pulse_min"],
+                        "oct_pulse_max": id_pulse_opts["oct_pulse_max"],
+                        "oct_lambda_a": id_pulse_opts["oct_lambda_a"],
+                        "oct_outfile": f'pulse_oct_{pulse_id}.dat'}),
+                    op_unit="iu")
+            pulse_id += 1
         else:
-            control_args = localTools.control_generator(
-                num_qubit, Ham_num, control_source, endTime, header)
-        model = qdyn.model.LevelModel()
-        for i in range(len(H)):
-            if isinstance(H[i],list):
-                id_pulse_opts = pulse_options[H[i][1]]
-                model.add_ham(
-                    H[i][0],
-                    pulse=qdyn.pulse.Pulse(
-                        tgrid,
-                        amplitude=H[i][1](tgrid, control_args[i - ham_info[0]]),
-                        time_unit="iu",
-                        ampl_unit="iu",
-                        # is_complex="True",
-                        config_attribs={
-                            "filename": id_pulse_opts["filename"],
-                            "oct_shape": id_pulse_opts["oct_shape"],
-                            "t_rise": id_pulse_opts["t_rise"],
-                            "t_fall": id_pulse_opts["t_rise"],
-                            "oct_increase_factor": id_pulse_opts["oct_increase_factor"],
-                            "oct_pulse_min": id_pulse_opts["oct_pulse_min"],
-                            "oct_pulse_max": id_pulse_opts["oct_pulse_max"],
-                            "oct_lambda_a": id_pulse_opts["oct_lambda_a"],
-                            "oct_outfile": id_pulse_opts["oct_outfile"]}),
-                        op_unit="iu")
-            else:
-                model.add_ham(H[i], op_unit="iu")
-        num_pulses = len(model._pulse_ids)
+            model.add_ham(H_i, op_unit="iu")
     return model
+
+def qdyn_prop(
+    prop_obj: task_obj.Propagation,
+    runfolder,
+):
+    if len(prop_obj.tlist) == 3:qdyn_tlist = prop_obj.tlist[1:]
+    else:qdyn_tlist = prop_obj.tlist# tuple of the form (T, Nt)
+    runfolder=Path(runfolder)
+    runfolder.mkdir(parents=True, exist_ok=True)
+    dt = (qdyn_tlist[0]) / (qdyn_tlist[1] - 1)
+    tgrid = np.linspace(
+        float(dt / 2),
+        float(qdyn_tlist[0] - dt / 2),
+        qdyn_tlist[1] - 1,
+        dtype=np.float64,
+    )  #! here the default is np.float 64, it has been changed manually, also in QDYN python package
+    model = addHam2model(prop_obj.Hamiltonian,prop_obj.pulse_options,tgrid)
+    print('Ham added to model')
+    model.set_propagation(
+        qdyn_tlist[0], qdyn_tlist[1], time_unit="iu", prop_method="cheby")
+    for initial_state in prop_obj.initial_states:
+        model.add_state(initial_state, "initial")
+    user_variables = {}
+    if not os.path.exists(runfolder):
+        os.mkdir(runfolder)
+    #user_variables["runfolder"] = str(Path(runfolder))
+    #user_variables.update(user_kwargs)
+    #model.user_data = user_variables
+    model.write_to_runfolder(str(runfolder))  # write everything to runfolder
+    #mem = mem_routine(num_qubit,1,qdyn_tlist[1])
+    #runner(str(runfolder)+'/','prop','00:10:00',mem,program_ID=5,n_cpu=1,run_method = {"immediate_return":False,"slurm":False})
+    return model
+
+def qdyn_opt(
+    opt_obj: task_obj.Optimization,
+    runfolder,
+):
+    if len(opt_obj.prop.tlist) == 3:qdyn_tlist = opt_obj.prop.tlist[1:]
+    else:qdyn_tlist = opt_obj.prop.tlist# tuple of the form (T, Nt)
+    dt = (qdyn_tlist[0]) / (qdyn_tlist[1] - 1)
+    tgrid = np.linspace(
+        float(dt / 2),
+        float(qdyn_tlist[0] - dt / 2),
+        qdyn_tlist[1] - 1,
+        dtype=np.float64,
+    )  #! here the default is np.float 64, it has been changed manually, also in QDYN python package
+    # Initialize model
+    model = addHam2model(opt_obj.prop.Hamiltonian,opt_obj.prop.pulse_options,tgrid)
+    for i in range(opt_obj.prop.n_states):
+        model.add_state(qutip.Qobj(opt_obj.prop.initial_states[i]), "initial")
+        model.add_state(qutip.Qobj(opt_obj.target_states[i]), "final")
+    obj_path = Path(runfolder)
+    obj_path.mkdir(parents=True, exist_ok=True)
+    model.set_propagation(
+        qdyn_tlist[0], qdyn_tlist[1], time_unit="iu", prop_method="cheby")
+    #mem = mem_routine(num_qubit,n_states,qdyn_tlist[1])
+    mem = 100
+    model.set_oct(
+        method="krotovpk",
+        max_ram_mb=mem,
+        J_T_conv=opt_obj.oct_info['JT_conv'],
+        delta_J_T_conv=opt_obj.oct_info['delta_JT_conv'],
+        iter_dat="oct_iters.dat",
+        continue_=False,
+        params_file="oct_params.dat",
+        limit_pulses=True,
+        # keep_pulses="prev",
+        iter_stop=opt_obj.oct_info['iter_stop'])
+    model.write_to_runfolder(str(runfolder))
+    return model
+    #jobname = runfolder.split('/')[1]
+    #runtime = runtime_routine()
+    #program_ID = int(np.log2(n_states))
+    #runner_result = runner(runfolder,jobname,runtime,mem = mem + 10,program_ID=program_ID,run_method = run_method)
+    #return runner_result
 
 def default_run_method():
     return {"immediate_return":True,"slurm":True,"store":True}
@@ -104,6 +175,7 @@ def rotate_matrix_call(lab_mat,num_qubit,T,direction = 1):
     return qutip.Qobj(
         localTools.rotate_matrix(lab_mat, num_qubit, direction, T))
 
+'''
 def qdyn_prop(
     Ham_num,  # Hamiltonian
     qdyn_tlist,  # tuple of the form (T, Nt)
@@ -213,4 +285,5 @@ def qdyn_model(
     program_ID = int(np.log2(n_states))
     runner_result = runner(runfolder,jobname,runtime,mem = mem + 10,program_ID=program_ID,run_method = run_method)
     return runner_result
+'''
 
