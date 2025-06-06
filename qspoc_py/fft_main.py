@@ -1,5 +1,5 @@
 from . import read_write
-from scipy.fft import fft,fftfreq
+from scipy.fft import fft,fftfreq,irfft
 import matplotlib.pyplot as plt,numpy as np
 from scipy.interpolate import interp1d
 
@@ -20,8 +20,10 @@ def apply_window_fft(tlist, amplitude, window):
     #fit = interp1d(tlist,amplitude, kind="cubic", fill_value="extrapolate")
     #tlist = np.linspace(0,1,10000)
     #amplitude = fit(tlist)
-    fft_result = np.fft.fft(amplitude)
-    frequencies = np.fft.fftfreq(amplitude.size, d=tlist[1] - tlist[0])
+    #fft_result = np.fft.fft(amplitude)
+    #frequencies = np.fft.fftfreq(amplitude.size, d=tlist[1] - tlist[0])
+    fft_result = fft(amplitude)
+    frequencies = fftfreq(amplitude.size, d=tlist[1] - tlist[0])
 
     # 2. Apply the window function in the frequency domain
     # Ensure the window has the same length as the FFT result
@@ -31,7 +33,8 @@ def apply_window_fft(tlist, amplitude, window):
     filtered_fft = fft_result * window
 
     # 3. Perform the Inverse Fast Fourier Transform (IFFT) to return to the time domain
-    filtered_amplitude = np.fft.ifft(filtered_fft)  # Take the real part as the result
+    #filtered_amplitude = np.fft.ifft(filtered_fft)  # Take the real part as the result
+    filtered_amplitude = irfft(filtered_fft)  # Take the real part as the result
 
     # 4. Plotting
     plt.figure(figsize=(10, 5))
@@ -45,6 +48,7 @@ def apply_window_fft(tlist, amplitude, window):
     plt.plot(frequencies, np.abs(filtered_fft),'--',label = 'filtered')
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Magnitude')
+    plt.plot(window)
     plt.legend(loc='best')
     plt.subplot(1,2, 2)
     plt.plot(tlist, amplitude,label = 'initial')
@@ -52,7 +56,8 @@ def apply_window_fft(tlist, amplitude, window):
     plt.xlabel('Time')
     plt.ylabel('Amplitude')
 
-    plt.plot(tlist, filtered_amplitude,'--',label='filtered')
+    #plt.plot(tlist, filtered_amplitude,'--',label='filtered')
+    plt.plot(filtered_amplitude,'--',label='filtered')
     plt.xlabel('Time')
     plt.ylabel('Amplitude')
     plt.legend(loc='best')
