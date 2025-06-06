@@ -6,7 +6,7 @@ from scipy.interpolate import interp1d
 from scipy.sparse.linalg import eigsh
 from scipy.sparse import csr_matrix
 
-str2float_keys = ['oct_lambda_a','t_start','t_stop','t_rise','t_fall']
+str2float_keys = ['oct_lambda_a','t_start','t_stop','t_rise','t_fall','oct_pulse_min','oct_pulse_max']
 
 def sort_property(ipt_list):
     text_content = ''
@@ -116,7 +116,7 @@ class Propagation:
         self.pulse_name = pulse_name
         self.pulse_options = pulse_options
         self.c_ops = None
-        self.krotov_pulse_options()
+        self.shape_function()
         self.oct_increase_factor = 1
         self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
         self.sparsity = sparsity(self.Hamiltonian)
@@ -124,39 +124,36 @@ class Propagation:
     def add_dissipator(self,c_ops):
         self.c_ops = c_ops
 
-    def krotov_pulse_options(self):
-        converted_options = {}
+    def shape_function(self):
         if len(self.tlist) == 2:
             ipt_tlist = [0,self.tlist[0],self.tlist[1]]
         if len(self.tlist) == 3:
             ipt_tlist = self.tlist
         for k,v in self.pulse_options.items():
-            candidate_dict = {}
-            for sub_k,sub_v in v.items():
-                if sub_k in str2float_keys:
-                    candidate_dict[sub_k] = float(sub_v)
-                else:
-                    candidate_dict[sub_k] = sub_v
             if 'oct_lambda_a' in v.keys():
-                candidate_dict['update_shape']=partial(localTools.S,t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=candidate_dict['t_rise'],t_fall=candidate_dict['t_fall'])
-                self.pulse_options[k]['update_shape']=candidate_dict['update_shape']
-            candidate_dict['t_start']=ipt_tlist[0]
-            candidate_dict['t_stop']=ipt_tlist[1]
-            converted_options[k] = candidate_dict
-            #converted_options[k] = dict(oct_lambda_a=float(v['oct_lambda_a']),update_shape=partial(localTools.S,
-            #                        t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=float(v['t_rise']), t_fall=float(v['t_fall'])),t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=float(v['t_rise']), t_fall=float(v['t_fall']),args=v['args'])
-            #self.pulse_options[k]['update_shape']=converted_options[k]['update_shape']
-        self.Krotov_pulse_ops =  converted_options
+                self.pulse_options[k]['update_shape']=partial(localTools.S,t_start=ipt_tlist[0], t_stop=ipt_tlist[1], t_rise=self.pulse_options[k]['t_rise'],t_fall=self.pulse_options[k]['t_fall'])
 
     def change_lambda_a(self,change_factor,approach = 1):
         if approach:
             for k in self.pulse_options.keys():
                 self.pulse_options[k]['oct_lambda_a'] *= change_factor
-                self.Krotov_pulse_ops[k]['oct_lambda_a'] *= change_factor
         else:
             for k in self.pulse_options.keys():
                 self.pulse_options[k]['oct_lambda_a'] = change_factor
-                self.Krotov_pulse_ops[k]['oct_lambda_a'] = change_factor
+
+    def check_pulse(self,t,pulse_i,control_i_update_amp):
+        if all(['oct_pulse_min' not in self.pulse_options[pulse_i].keys(),'oct_pulse_max' not in self.pulse_options[pulse_i].keys()]):
+            return control_i_update_amp
+        pulse_i_t = control_i_update_amp+pulse_i(t,self.pulse_options[pulse_i]['args'])
+        if 'oct_pulse_max' in self.pulse_options[pulse_i].keys():
+            assert pulse_i(t,self.pulse_options[pulse_i]['args']) < self.pulse_options[pulse_i]['oct_pulse_max']
+            if pulse_i_t > self.pulse_options[pulse_i]['oct_pulse_max']:
+                control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_max']
+        if 'oct_pulse_min' in self.pulse_options[pulse_i].keys():
+            assert pulse_i(t,self.pulse_options[pulse_i]['args']) > self.pulse_options[pulse_i]['oct_pulse_min']
+            if pulse_i_t < self.pulse_options[pulse_i]['oct_pulse_min']:
+                control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_min']
+        return control_i_update_amp
 
     def propagate_sg(self,dt,t,psi_0,backwards=False):
         psi_0 = copy.deepcopy(psi_0)
@@ -173,24 +170,25 @@ class Propagation:
         state_size = psi_0[0].size
         for i in range(self.n_states):
             chis[i] = np.reshape(chis[i],(state_size))
-        update_return = []
+        update_return = {}
         ga_return = []
         for k in range(len(self.Hamiltonian)):
             if isinstance(self.Hamiltonian[k],list):
                 control_k_update_amp = 0
                 Hk = self.Hamiltonian[k][0]
                 pulse_k = self.Hamiltonian[k][1]
-                update_shape_k_t = self.Krotov_pulse_ops[pulse_k]['update_shape'](t)
-                oct_lambda_a_k = self.Krotov_pulse_ops[pulse_k]['oct_lambda_a']
+                update_shape_k_t = self.pulse_options[pulse_k]['update_shape'](t)
+                oct_lambda_a_k = self.pulse_options[pulse_k]['oct_lambda_a']
                 if oct_lambda_a_k and update_shape_k_t != 0:
                     for i in range(self.n_states):
                         #Hk_psi = np.matmul(Hk,psi_0[i])
                         Hk_psi = Hk.dot(psi_0[i])
                         control_k_update_amp += np.linalg.norm(chis[i],2) * np.imag(np.inner(np.conjugate(chis[i]),np.reshape(Hk_psi,(state_size))))
                 control_k_update_amp *= update_shape_k_t / oct_lambda_a_k
+                control_k_update_amp = self.check_pulse(t,pulse_k,control_k_update_amp)
                 update_table[pulse_k] = control_k_update_amp
                 ga_return.append(control_k_update_amp * dt)
-                update_return.append(control_k_update_amp+pulse_k(t,self.Krotov_pulse_ops[pulse_k]['args']))
+                update_return[pulse_k] = control_k_update_amp+pulse_k(t,self.pulse_options[pulse_k]['args'])
         Ht = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
         for i in range(self.n_states):
             psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,sparsity = self.sparsity)
@@ -204,15 +202,21 @@ class Propagation:
         if backwards:prop_tlist = np.flip(prop_tlist,0)
         if store_states:psi_t = [psi_0]
         if update:
-            new_controls = [[] for _ in range(len(self.pulse_options))]
+            #new_controls = [[] for _ in range(len(self.pulse_options))]
+            new_controls = {}
+            for H_i in self.Hamiltonian:
+                if isinstance(H_i,list):
+                    new_controls[H_i[1]] = [0] * len(prop_tlist)
             ga_int = [0 for _ in range(len(self.pulse_options))]
         for i in range(len(prop_tlist)):
             t = prop_tlist[i]
             if update:
                 psi_0,update_return,ga_return = self.propagate_sg_update(dt,t,psi_0,chis_t[i])
                 for k in range(len(new_controls)):
-                    new_controls[k].append(update_return[k])
                     ga_int[k] += np.abs(ga_return[k])
+                for H_i in self.Hamiltonian:
+                    if isinstance(H_i,list):
+                        new_controls[H_i[1]][i] = update_return[H_i[1]]
             else:psi_0 = self.propagate_sg(dt,t,psi_0,backwards=backwards)
             if store_states:psi_t.append(psi_0)
         if update:
@@ -223,17 +227,24 @@ class Propagation:
             else:return psi_0
 
     def update_control(self,new_controls):
-        for i in range(len(new_controls)):
-            self.pulse_options[self.Hamiltonian[i+1][1]]['args']["fit_func"] = interp1d(
-                self.tlist_long, new_controls[i], kind="cubic", fill_value="extrapolate")
-        self.krotov_pulse_options()
+        for H_i in self.Hamiltonian:
+            if isinstance(H_i,list):
+                self.pulse_options[H_i[1]]['args']["fit_func"] =  interp1d(
+                self.tlist_long, new_controls[H_i[1]], kind="cubic", fill_value="extrapolate")
         self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
 
     def obtain_pulse(self):
+        pulses = {}
+        for Hi in self.Hamiltonian:
+            if isinstance(Hi,list):
+                pulses[Hi[1]] = self.pulse_options[Hi[1]]['args']["fit_func"]
+        return pulses
+
+    def obtain_pulse_real_sequence(self):
         pulses = []
         for Hi in self.Hamiltonian:
             if isinstance(Hi,list):
-                pulses.append(Hi[1](self.tlist_long,self.pulse_options[Hi[1]]['args']))
+                pulses.append(self.pulse_options[Hi[1]]['args']["fit_func"](self.tlist_long))
         return pulses
 
     def plot_pulses(self,ipt_controls = None):
@@ -319,18 +330,20 @@ class Optimization:
         self.observables = observables
 
     def store_initial_controls(self):
-        initial_controls = []
+        initial_controls = {}
         for Hi in self.prop.Hamiltonian:
             if isinstance(Hi,list):
-                initial_controls.append(
-                    Hi[1](self.prop.tlist_long,self.prop.pulse_options[Hi[1]]['args'])
-                )
-        self.initial_controls.append(initial_controls)
+                initial_controls[Hi[1]] = self.prop.pulse_options[Hi[1]]['args']
+        self.initial_controls = initial_controls
 
     def update_control(self,new_controls,store_key = False):
         if store_key == 'all':
             if len(self.stored_controls) == 0:
-                self.stored_controls.append(self.prop.obtain_pulse())
+                controls_0 = self.prop.obtain_pulse()
+                for H_i in self.prop.Hamiltonian:
+                    if isinstance(H_i,list):
+                        controls_0[H_i[1]] = controls_0[H_i[1]](self.prop.tlist_long)
+                self.stored_controls.append(controls_0)
             self.stored_controls.append(new_controls)
         if store_key == 'last':
             if len(self.stored_controls) < 2:
@@ -342,9 +355,13 @@ class Optimization:
         alphas = np.linspace(0.1,1,len(self.stored_controls))
         colors = ['r','g','b','c','m','y']
         for i in range(len(self.stored_controls)):
-            for j in range(len(self.stored_controls[i])):
-                plt.plot(self.prop.tlist_long,self.stored_controls[i][j],color=colors[j % len(colors)],alpha=alphas[i])
-        plt.show()
+            pulse_count = 0
+            for H_i in self.prop.Hamiltonian:
+                if isinstance(H_i,list):
+                    plt.plot(self.prop.tlist_long,self.stored_controls[i][H_i[1]],color=colors[pulse_count % len(colors)],alpha=alphas[i])
+                    pulse_count += 1
+        if len(self.stored_controls):
+            plt.show()
 
     def config(self,path,zero_base = True):
         path_Path = Path(path)
@@ -387,7 +404,7 @@ class Optimization:
             state_f.write(state_text)
 
     def store_result(self,runfolder,psi_T):
-        pulses = self.prop.obtain_pulse()
+        pulses = self.prop.obtain_pulse_real_sequence()
         for i in range(len(pulses)):
             control_text = read_write.control2text(self.prop.tlist_long,pulses[i])
             with open(runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
@@ -490,7 +507,7 @@ class Optimization:
                     out_stream.write(message+'\n')
                     out_stream.flush()
                 else:print(message)
-                self.update_control(new_controls)
+                self.update_control(new_controls,'all')
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
                     message = f'stop condition met (JT_iter[-1] < {self.oct_info['JT_conv']}: {JT_iter[-1] < self.oct_info['JT_conv']}, ΔJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']}), break'
                     if runfolder:out_stream.write(message+'\n')
