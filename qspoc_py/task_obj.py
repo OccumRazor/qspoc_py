@@ -7,6 +7,7 @@ from scipy.sparse.linalg import eigsh
 from scipy.sparse import csr_matrix
 
 str2float_keys = ['oct_lambda_a','t_start','t_stop','t_rise','t_fall','oct_pulse_min','oct_pulse_max']
+function_keys = ['args','update_shape']
 
 def sort_property(ipt_list):
     text_content = ''
@@ -105,6 +106,14 @@ def sparsity(Hamiltonian):
     Hr = csr_matrix(Hr)
     return 1 - Hr.nnz/(Hr.shape[0] * Hr.shape[1])
 
+def sparse_Ham(Hamiltonian):
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            H_i[0] = csr_matrix(H_i[0])
+        else:
+            H_i = csr_matrix(H_i)
+    return Hamiltonian
+
 class Propagation:
     def __init__(self,Hamiltonian,tlist,prop_method,initial_states,pulse_name,pulse_options = None):
         self.Hamiltonian = Hamiltonian
@@ -120,6 +129,7 @@ class Propagation:
         self.oct_increase_factor = 1
         self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
         self.sparsity = sparsity(self.Hamiltonian)
+        if self.sparsity > 0.85:self.Hamiltonian = sparse_Ham(self.Hamiltonian)
     
     def add_dissipator(self,c_ops):
         self.c_ops = c_ops
@@ -205,7 +215,6 @@ class Propagation:
         if backwards:prop_tlist = np.flip(prop_tlist,0)
         if store_states:psi_t = [psi_0]
         if update:
-            #new_controls = [[] for _ in range(len(self.pulse_options))]
             new_controls = {}
             for H_i in self.Hamiltonian:
                 if isinstance(H_i,list):
@@ -282,7 +291,7 @@ class Propagation:
                 Hamiltonian_info.append({'dim':self.Hamiltonian[i][0].shape[0],'filename':f'H{i}.dat','pulse_id':pulse_count})
                 id_pulse_info = {'pulse_id':pulse_count,'filename':f'{self.pulse_name}_{pulse_count}.dat'}
                 for key in id_pulse_option.keys():
-                    if key != 'args':
+                    if key not in function_keys:
                         id_pulse_info[key] = id_pulse_option[key]
                 pulse_info.append(id_pulse_info)
                 pulse_count += 1
