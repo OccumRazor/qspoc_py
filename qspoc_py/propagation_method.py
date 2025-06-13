@@ -36,10 +36,7 @@ def expm(herm_mat,initial_state,dt,backwards = False):
     else: Ut = expm(-1j * herm_mat * dt)
     return Ut.dot(initial_state)
 
-def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,sparsity,backwards = False):
-    if not ishermitian(herm_mat):print('herm_mat is not hermitian')
-    if isinstance(herm_mat,list):herm_mat=np.array(herm_mat)
-    if sparsity > 0.85:herm_mat = csr_matrix(herm_mat)
+def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,backwards = False):
     Delta = E_max - E_min
     R = Delta  * dt / 2
     max_eval = int(4 * np.abs(R))

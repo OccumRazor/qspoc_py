@@ -1,4 +1,4 @@
-import numpy as np,time,copy,matplotlib.pyplot as plt,random
+import numpy as np,time,copy,matplotlib.pyplot as plt,random,time 
 from . import localTools,read_write,propagation_method,fft_main
 from functools import partial
 from pathlib import Path
@@ -107,11 +107,11 @@ def sparsity(Hamiltonian):
     return 1 - Hr.nnz/(Hr.shape[0] * Hr.shape[1])
 
 def sparse_Ham(Hamiltonian):
-    for H_i in Hamiltonian:
-        if isinstance(H_i,list):
-            H_i[0] = csr_matrix(H_i[0])
+    for i in range(len(Hamiltonian)):
+        if isinstance(Hamiltonian[i],list):
+            Hamiltonian[i][0] = csr_matrix(Hamiltonian[i][0])
         else:
-            H_i = csr_matrix(H_i)
+            Hamiltonian[i] = csr_matrix(Hamiltonian[i])
     return Hamiltonian
 
 class Propagation:
@@ -127,9 +127,9 @@ class Propagation:
         self.c_ops = None
         self.shape_function()
         self.oct_increase_factor = 1
-        self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
         self.sparsity = sparsity(self.Hamiltonian)
         if self.sparsity > 0.85:self.Hamiltonian = sparse_Ham(self.Hamiltonian)
+        self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
     
     def add_dissipator(self,c_ops):
         self.c_ops = c_ops
@@ -159,11 +159,11 @@ class Propagation:
             return control_i_update_amp
         pulse_i_t = control_i_update_amp+pulse_i(t,self.pulse_options[pulse_i]['args'])
         if 'oct_pulse_max' in self.pulse_options[pulse_i].keys():
-            assert pulse_i(t,self.pulse_options[pulse_i]['args']) < self.pulse_options[pulse_i]['oct_pulse_max']
+            assert pulse_i(t,self.pulse_options[pulse_i]['args']) <= self.pulse_options[pulse_i]['oct_pulse_max']
             if pulse_i_t > self.pulse_options[pulse_i]['oct_pulse_max']:
                 control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_max']
         if 'oct_pulse_min' in self.pulse_options[pulse_i].keys():
-            assert pulse_i(t,self.pulse_options[pulse_i]['args']) > self.pulse_options[pulse_i]['oct_pulse_min']
+            assert pulse_i(t,self.pulse_options[pulse_i]['args']) >= self.pulse_options[pulse_i]['oct_pulse_min']
             if pulse_i_t < self.pulse_options[pulse_i]['oct_pulse_min']:
                 control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_min']
         return control_i_update_amp
@@ -173,7 +173,7 @@ class Propagation:
         dt = self.tlist_long[1] - self.tlist_long[0]
         Ht = H_t(self.Hamiltonian,t,self.pulse_options)
         for i in range(self.n_states):
-            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,sparsity = self.sparsity,backwards=backwards)
+            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
         return psi_0
 
     def propagate_sg_update(self,dt,t,psi_0,chis):
@@ -194,7 +194,6 @@ class Propagation:
                 oct_lambda_a_k = self.pulse_options[pulse_k]['oct_lambda_a']
                 if oct_lambda_a_k and update_shape_k_t != 0:
                     for i in range(self.n_states):
-                        #Hk_psi = np.matmul(Hk,psi_0[i])
                         Hk_psi = Hk.dot(psi_0[i])
                         control_k_update_amp += np.linalg.norm(chis[i],2) * np.imag(np.inner(np.conjugate(chis[i]),np.reshape(Hk_psi,(state_size))))
                 control_k_update_amp *= update_shape_k_t / oct_lambda_a_k
@@ -204,7 +203,7 @@ class Propagation:
                 update_return[pulse_k] = control_k_update_amp+pulse_k(t,self.pulse_options[pulse_k]['args'])
         Ht = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
         for i in range(self.n_states):
-            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,sparsity = self.sparsity)
+            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt)
         return psi_0,update_return,ga_return
 
     def propagate(self,backwards=False,store_states = False,update=False,chis_t=None,prop_options: dict = {}):
@@ -363,7 +362,7 @@ class Optimization:
             else:self.stored_controls = [self.stored_controls[-1],new_controls]
         self.prop.update_control(new_controls)
 
-    def plot_sotred_pulses(self):
+    def plot_sotred_pulses(self,fig_name=None):
         alphas = np.linspace(0.1,1,len(self.stored_controls))
         colors = ['r','g','b','c','m','y']
         for i in range(len(self.stored_controls)):
@@ -373,7 +372,11 @@ class Optimization:
                     plt.plot(self.prop.tlist_long,self.stored_controls[i][H_i[1]],color=colors[pulse_count % len(colors)],alpha=alphas[i])
                     pulse_count += 1
         if len(self.stored_controls):
-            plt.show()
+            if fig_name:
+                plt.savefig(fig_name)
+                plt.clf()
+            else:
+                plt.show()
 
     def config(self,path,zero_base = True):
         path_Path = Path(path)

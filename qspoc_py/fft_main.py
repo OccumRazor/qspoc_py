@@ -3,6 +3,51 @@ from scipy.fft import fft,fftfreq,irfft
 import matplotlib.pyplot as plt,numpy as np
 from scipy.interpolate import interp1d
 
+def control_fft(tlist, amplitudes,fig_name=None):
+    """
+    Applies a window function in the frequency domain to a time-domain signal.
+
+    Args:
+        tlist (np.ndarray): A 1-D numpy array representing the time points of the signal.
+        amplitude (np.ndarray): A 1-D numpy array representing the amplitude of the signal at each time point.
+        window (np.ndarray): A 1-D numpy array representing the window function to apply in the frequency domain.
+                             It should have the same length as the FFT of the amplitude.
+
+    Returns:
+        np.ndarray: A 1-D numpy array representing the time-domain signal after the window has been applied in the frequency domain.
+    """
+    # 1. Perform the Fast Fourier Transform (FFT)
+    #fit = interp1d(tlist,amplitude, kind="cubic", fill_value="extrapolate")
+    #tlist = np.linspace(0,1,10000)
+    #amplitude = fit(tlist)
+    #fft_result = np.fft.fft(amplitude)
+    #frequencies = np.fft.fftfreq(amplitude.size, d=tlist[1] - tlist[0])
+    fft_results = [fft(amplitude) for amplitude in amplitudes]
+    frequencies = fftfreq(amplitudes[0].size, d=tlist[1] - tlist[0])
+
+    plt.figure(figsize=(10, 5))
+
+    plt.subplot(1,2, 1)
+    for i in range(len(amplitudes)):
+        plt.plot(tlist, amplitudes[i],label = rf'$\epsilon_{i}$')
+    plt.title('FFT Amplitude')
+    plt.xlabel('t')
+    plt.ylabel('Control')
+    plt.legend(loc='best')
+    plt.subplot(1,2, 2)
+    for i in range(len(amplitudes)):
+        plt.plot(frequencies, np.abs(fft_results[i]),'--',label = rf'$\epsilon_{i}$')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Magnitude')
+    plt.legend(loc='best')
+    plt.tight_layout()
+    if fig_name:
+        plt.savefig(fig_name)
+        plt.clf()
+    else:
+        plt.show()
+
+
 def apply_window_fft(tlist, amplitude, window):
     """
     Applies a window function in the frequency domain to a time-domain signal.

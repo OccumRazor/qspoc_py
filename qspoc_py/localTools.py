@@ -118,13 +118,13 @@ def control_generator_read(n_controls, control_source, header, endTime):
 
 
 def control_generator_random(n_controls, guess_amps, endTime):
-    num_points = 5
+    num_points = 15
     control_args = []
     for i in range(n_controls):
         if isinstance(guess_amps,list):guess_amp = guess_amps[i]
         else:guess_amp = guess_amps
         detupleGuess = (
-            [0] + [guess_amp * random.random() - guess_amp / 2 for _ in range(num_points)] + [0])
+            [0,0] + [guess_amp * random.random() - guess_amp / 2 for _ in range(num_points)] + [0,0])
         detupleTlist = np.linspace(0, endTime, len(detupleGuess))
         cubicSpline_fit = interp1d(
             detupleTlist, detupleGuess, kind="cubic", fill_value="extrapolate"
@@ -179,34 +179,8 @@ def densityMatrix(state):
             dm[i][j] = complex(state[i] * np.conjugate(state[j]))
     return np.array(dm)
 
-def canoGHZGen(num_qubit, canoLabel, phi = 0):
-    # Variable canoLabel can be either a label like 3+ or a pure state 010
-    if phi != 0:
-        state = np.zeros([2**num_qubit, 1],dtype=np.complex128)
-    else:
-        state = np.zeros([2**num_qubit, 1])
-        phi = 1
-    if canoLabel[-1] != "+" and canoLabel[-1] != "-":
-        state[int(canoLabel, 2)][0] = 1
-        return qutip.Qobj(state)
-    stateLabel = int(canoLabel[: len(canoLabel) - 1])
-    state[stateLabel][0] = 1 / np.sqrt(2)
-    if canoLabel[-1] == "+":
-        state[2**num_qubit - stateLabel - 1][0] = phi / np.sqrt(2)
-    else:
-        state[2**num_qubit - stateLabel - 1][0] = -phi / np.sqrt(2)
-    return qutip.Qobj(state)
 
-def rotate_state(state, num_qubit, direction=0, endTime=0):
-    H0 = np.zeros([2**num_qubit, 2**num_qubit], dtype=np.complex64)
-    for i in range(num_qubit):
-        H0 += (
-            0.5
-            * freqX[i]
-            * fastKron("I" * i + "Z" + "I" * (num_qubit - i - 1))
-            * endTime)
-    if isinstance(state, qutip.Qobj):
-        state = state.full()
+def rotate_state(state, H0, direction=0):
     if direction:
         return np.matmul(
             scipy.linalg.expm(1j * H0), state
@@ -216,16 +190,7 @@ def rotate_state(state, num_qubit, direction=0, endTime=0):
             scipy.linalg.expm(-1j * H0), state
         )  # \psi_nR=U\psi_RWA, return lab frame state.
 
-def rotate_matrix(mat, num_qubit, direction=0, endTime=0):
-    H0 = np.zeros([2**num_qubit, 2**num_qubit], dtype=np.complex64)
-    for i in range(num_qubit):
-        H0 += (
-            0.5
-            * freqX[i]
-            * fastKron("I" * i + "Z" + "I" * (num_qubit - i - 1))
-            * endTime)
-    if isinstance(mat, qutip.Qobj):
-        mat = mat.full()
+def rotate_matrix(mat, H0, direction=0):
     if direction:return np.matmul(np.matmul(scipy.linalg.expm(1j*H0),mat),scipy.linalg.expm(-1j*H0))
     else:return np.matmul(np.matmul(scipy.linalg.expm(-1j*H0),mat),scipy.linalg.expm(1j*H0))
 
