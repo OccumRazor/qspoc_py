@@ -117,7 +117,12 @@ def control_generator_read(n_controls, control_source, header, endTime):
     return control_args
 
 
-def control_generator_random(n_controls, guess_amps, endTime):
+def abs_wrapper(original_func):
+    def new_func(t):
+        return np.abs(original_func(t))
+    return new_func
+
+def control_generator_random(n_controls, guess_amps, endTime,positive = False):
     num_points = 15
     control_args = []
     for i in range(n_controls):
@@ -129,7 +134,10 @@ def control_generator_random(n_controls, guess_amps, endTime):
         cubicSpline_fit = interp1d(
             detupleTlist, detupleGuess, kind="cubic", fill_value="extrapolate"
         )
-        control_args.append({"fit_func": cubicSpline_fit})
+        if positive: 
+            control_args.append({"fit_func": abs_wrapper(cubicSpline_fit)})
+        else:
+            control_args.append({"fit_func": cubicSpline_fit})
     return control_args
 
 sq_dict = {
