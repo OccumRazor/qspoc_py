@@ -87,8 +87,12 @@ def qdyn_opt(
     # Initialize model
     model = addHam2model(opt_obj.prop.Hamiltonian,opt_obj.prop.pulse_options,tgrid)
     for i in range(opt_obj.prop.n_states):
-        model.add_state(qutip.Qobj(opt_obj.prop.initial_states[i]), "initial")
-        model.add_state(qutip.Qobj(opt_obj.target_states[i]), "final")
+        if opt_obj.prop.n_states == 1:
+            model.add_state(qutip.Qobj(opt_obj.prop.initial_states[i]), f"initial")
+            model.add_state(qutip.Qobj(opt_obj.target_states[i]), f"final")
+        else:
+            model.add_state(qutip.Qobj(opt_obj.prop.initial_states[i]), f"initial_{i}")
+            model.add_state(qutip.Qobj(opt_obj.target_states[i]), f"final_{i}")
     obj_path = Path(runfolder)
     obj_path.mkdir(parents=True, exist_ok=True)
     model.set_propagation(
