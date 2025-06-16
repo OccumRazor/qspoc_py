@@ -482,7 +482,7 @@ class Optimization:
         iter_str_len = len(str(self.oct_info['iter_stop'])) + 2
         if runfolder:
             out_stream = open(runfolder + 'oct_iters.dat','w')
-        message = f'{' ' * (iter_str_len - 4)}iter{' ' * 4}JT{' ' * 12}dJT{' ' * 11}ga_int{' ' * 8}dt'
+        message = f'#{' ' * (iter_str_len - 3)}iter{' ' * 4}JT{' ' * 12}dJT{' ' * 11}ga_int{' ' * 8}dt'
         if runfolder:out_stream.write(message+'\n')
         else:print(message)
         message = f'{' ' * (iter_str_len-1)}0{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{'n/a':>10}{' ' * 4}{'n/a':>10}{' ' * 4}{tac - tic:.2f}'
@@ -513,7 +513,7 @@ class Optimization:
             psi_T_last_step = copy.deepcopy(psi_T)
             JT_new = JT(psi_T,self.target_states)
             if JT_new > JT_iter[-1] and monotonic:
-                message = f'{' ' * (iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new}, increase lambda_a by a factor of 2.'
+                message = f'#{' ' * (iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new}, increase lambda_a by a factor of 2.'
                 if runfolder:
                     out_stream.write(message+'\n')
                     out_stream.flush()
@@ -530,7 +530,7 @@ class Optimization:
                 else:print(message)
                 self.update_control(new_controls,'all')
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
-                    message = f'stop condition met (JT_iter[-1] < {self.oct_info['JT_conv']}: {JT_iter[-1] < self.oct_info['JT_conv']}, ΔJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']}), break'
+                    message = f'# stop condition met (JT_iter[-1] < {self.oct_info['JT_conv']}: {JT_iter[-1] < self.oct_info['JT_conv']}, ΔJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']}), break'
                     if runfolder:out_stream.write(message+'\n')
                     else:print(message)
                     break
