@@ -1,5 +1,5 @@
 import numpy as np,time,copy,matplotlib.pyplot as plt,random,time 
-from . import localTools,read_write,propagation_method,fft_main
+from . import localTools,read_write,propagation_method,fft_main,J_T_local
 from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
@@ -529,7 +529,7 @@ class Optimization:
                 else:print(message)
                 self.update_control(new_controls,'all')
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
-                    message = f'# stop condition met (JT_iter[-1] < {self.oct_info['JT_conv']}: {JT_iter[-1] < self.oct_info['JT_conv']}, ΔJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']}), break'
+                    message = f'# stop condition met (JT_iter[-1] < {self.oct_info['JT_conv']}: {JT_iter[-1] < self.oct_info['JT_conv']}, dJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']}), break'
                     if runfolder:out_stream.write(message+'\n')
                     else:print(message)
                     break
@@ -539,67 +539,82 @@ class Optimization:
 
     def GRAPE_update_pulse(self,psi_t,lambda_t,Hamiltonian,tlist,n_states,pulse_options):
         lambda_t.reverse()
-        for i in range(len(lambda_t)):
-            for k in range(n_states):
-                psi_t[i][k] = localTools.densityMatrix(psi_t[i][k])
-                lambda_t[i][k] = localTools.densityMatrix(lambda_t[i][k])
-        new_pulses = []
+        state_size = psi_t[0][0].size
+        for i in range(len(tlist)):
+            for j in range(self.prop.n_states):
+                lambda_t[i][j] = np.reshape(lambda_t[i][j],(state_size))
+        #for i in range(len(lambda_t)):
+            #for k in range(n_states):
+                #psi_t[i][k] = localTools.densityMatrix(psi_t[i][k])
+                #lambda_t[i][k] = localTools.densityMatrix(lambda_t[i][k])
+        new_pulses = {}
         dt = tlist[1] - tlist[0]
         ga = []
         for i in range(len(Hamiltonian)):
             if isinstance(Hamiltonian[i],list):
-                id_pulse = []
-                id_ga = 0
-                for j in range(len(tlist)):
-                    Delta_it = 0
-                    for k in range(n_states):
-                        Delta_it += np.real(-1j * dt * np.trace(np.matmul(lambda_t[j][k],
-                                    np.matmul(Hamiltonian[i][0],psi_t[j][k])-np.matmul(psi_t[j][k],Hamiltonian[i][0]))))
-                    id_pulse.append(Hamiltonian[i][1](tlist[j],pulse_options[Hamiltonian[i][1]]['args'])-pulse_options[Hamiltonian[i][1]]['update_shape'](tlist[j])*epsilon*Delta_it)
-                    id_ga += np.abs(pulse_options[Hamiltonian[i][1]]['update_shape'](tlist[j])*epsilon*Delta_it)
-                new_pulses.append(id_pulse)
-                ga.append(id_ga)
+                oct_lambda_a = pulse_options[Hamiltonian[i][1]]['oct_lambda_a']
+                if oct_lambda_a:
+                    epsilon = 1 / oct_lambda_a
+                    id_pulse = []
+                    id_ga = 0
+                    for j in range(len(tlist)):
+                        Delta_it = 0
+                        for k in range(n_states):
+                            Hi_psi = Hamiltonian[i][0].dot(psi_t[j][k])
+                            Delta_it += 2 * dt * np.imag(np.inner(np.conjugate(lambda_t[j][k]),np.reshape(Hi_psi,(state_size))))
+                            #Delta_it += np.real(-1j * dt * np.trace(np.matmul(lambda_t[j][k],
+                            #            np.matmul(Hamiltonian[i][0],psi_t[j][k])-np.matmul(psi_t[j][k],Hamiltonian[i][0]))))
+                        update_amp = pulse_options[Hamiltonian[i][1]]['update_shape'](tlist[j])*epsilon*Delta_it
+                        update_amp = self.prop.check_pulse(tlist[j],self.prop.Hamiltonian[i][1],update_amp)
+                        id_pulse.append(Hamiltonian[i][1](tlist[j],pulse_options[Hamiltonian[i][1]]['args'])+update_amp)
+                        id_ga += np.abs(update_amp)
+                    new_pulses[Hamiltonian[i][1]] = id_pulse
+                    ga.append(id_ga)
         return new_pulses,sum(ga)/len(ga)
 
-    def GRAPE(self,target_states,iter_stop,runfolder = None):
-        from J_T_local import JT_tau
+    def GRAPE(self,target_states,runfolder = None):
         self.store_initial_controls()
-        JT_iter = [1]
+        JT_iter = []
         n_states = len(target_states)
-        iter_str_len = len(str(self.oct_info['iter_stop'])) + 2
+        iter_str_len = len(str(self.oct_info['iter_stop']+1)) + 2
         if runfolder:
             out_stream = open(runfolder + 'oct_iters.dat','w')
         message = f'#{' ' * (iter_str_len - 3)}iter{' ' * 4}JT{' ' * 12}dJT{' ' * 11}ga_int{' ' * 8}dt'
         if runfolder:out_stream.write(message+'\n')
         else:print(message)
-        for iters in range(iter_stop):
+        for iters in range(self.oct_info['iter_stop']):
             tic_0 = time.time()
             psi_t = self.prop.propagate(False,True)
+            psi_T = psi_t[-1]
             tac_0 = time.time()
-            JT_iter.append(JT_tau(psi_t[-1],target_states))
-            if iters:message = f'{' ' * (iter_str_len - len(str(iters)))}{iters}{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{JT_iter[-2] - JT_iter[-1]:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{tac_0 + tac_1 - tic_0 - tic_1:.2f}'
-            else:message = f'{' ' * (iter_str_len-1)}0{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{'n/a':>10}{' ' * 4}{'n/a':>10}{' ' * 4}{tac_0 - tic_0:.2f}'
+            JT_iter.append(J_T_local.JT_tau(psi_T,target_states))
+            if iters:message = f'  {' ' * (iter_str_len - len(str(iters)))}{iters}{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{JT_iter[-1] - JT_iter[-2]:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{tac_0 + tac_1 - tic_0 - tic_1:.2f}'
+            else:message = f'  {' ' * (iter_str_len-1)}0{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{'n/a':>10}{' ' * 4}{'n/a':>10}{' ' * 4}{tac_0 - tic_0:.2f}'
             if runfolder:
                 out_stream.write(message+'\n')
                 out_stream.flush()
             else:print(message)
-            if JT_iter[-1] > self.oct_info['JT_conv'] or (JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
-                message = f'''# stop condition met (JT_iter[-1] > {self.oct_info['JT_conv']}: {JT_iter[-1] > self.oct_info['JT_conv']}, 
-                            ΔJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']}), break'''
-                if runfolder:out_stream.write(message+'\n')
-                else:print(message)
-                break
+            if iters:
+                if JT_iter[-1] > self.oct_info['JT_conv'] or (JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
+                    message = f'''# stop condition met (JT_iter[-1] > {self.oct_info['JT_conv']}: {JT_iter[-1] > self.oct_info['JT_conv']}, 
+                                dJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']}), break'''
+                    if runfolder:out_stream.write(message+'\n')
+                    else:print(message)
+                    break
             tic_1 = time.time()
             lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':target_states})
             new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.prop.Hamiltonian,self.prop.tlist_long,n_states,self.prop.pulse_options)
             tac_1 = time.time()
             self.update_control(new_pulses)
         if iters == iter_stop - 1:
+            iters += 1
+            tic_0 = time.time()
             psi_T = self.prop.propagate(False,False)
-            JT_iter.append(JT_tau(psi_T,target_states))
-            message = f'{' ' * (iter_str_len-1)}0{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{'n/a':>10}{' ' * 4}{'n/a':>10}{' ' * 4}{tac - tic:.2f}'
+            tac_0 = time.time()
+            JT_iter.append(J_T_local.JT_tau(psi_T,target_states))
+            message = f'  {' ' * (iter_str_len - len(str(iters)))}{iters}{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{JT_iter[-1] - JT_iter[-2]:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{tac_0 + tac_1 - tic_0 - tic_1:.2f}'
             if runfolder:
                 out_stream.write(message+'\n')
                 out_stream.flush()
             else:print(message)
-        return JT_iter[1:]
+        return JT_iter,psi_T
