@@ -1,7 +1,19 @@
 from . import read_write
-from scipy.fft import fft,fftfreq,irfft
+from scipy.fft import fft,fftfreq,irfft,fftshift
 import matplotlib.pyplot as plt,numpy as np
 from scipy.interpolate import interp1d
+from scipy import signal
+
+def fit_filtered_control(tlist,filtered_amplitude):
+    if tlist[0] == 0: 
+        t_start = 0
+        t_end = tlist[-1]
+    else:
+        half_dt = (tlist[1] - tlist[0])/2
+        t_start = tlist[0] - half_dt
+        t_end = tlist[-1] + half_dt
+    control_fit = interp1d(np.linspace(t_start,t_end,len(filtered_amplitude)),filtered_amplitude, kind="cubic", fill_value="extrapolate")
+    return control_fit(tlist)
 
 def control_fft(tlist, amplitudes,fig_name=None):
     """
@@ -48,6 +60,37 @@ def control_fft(tlist, amplitudes,fig_name=None):
         plt.show()
 
 
+def fft_filter(tlist, amplitude,threshold):
+    n_fft = amplitude.size
+    window = np.zeros(n_fft)
+    end_bin = int((n_fft * threshold + 1) // 2) 
+    window[:end_bin] = 1.0
+
+    fft_result = fft(amplitude)
+    frequencies = fftfreq(amplitude.size, d=(tlist[1] - tlist[0]))
+    max_freq = max(frequencies)
+    if max_freq > 10 ** 9:
+        freq_unit = 'GHZ'
+        frequencies /= 10 ** 9
+    elif max_freq > 10 ** 6:
+        freq_unit = 'MHZ'
+        frequencies /= 10 ** 6
+    elif max_freq > 10 ** 3:
+        freq_unit = 'kHZ'
+        frequencies /= 10 ** 3
+    else:freq_unit = 'HZ'
+    #frequencies = fftshift(frequencies)
+    # 2. Apply the window function in the frequency domain
+    # Ensure the window has the same length as the FFT result
+    if len(window) != len(fft_result):
+        raise ValueError("The window length must be equal to the FFT result length.")
+
+    filtered_fft = fft_result * window
+    # 3. Perform the Inverse Fast Fourier Transform (IFFT) to return to the time domain
+    #filtered_amplitude = 2 * np.fft.ifft(filtered_fft)  # Take the real part as the result
+    filtered_amplitude = 2 * irfft(filtered_fft)  # Take the real part as the result
+    return fit_filtered_control(tlist,filtered_amplitude)
+
 def apply_window_fft(tlist, amplitude, window):
     """
     Applies a window function in the frequency domain to a time-domain signal.
@@ -68,32 +111,43 @@ def apply_window_fft(tlist, amplitude, window):
     #fft_result = np.fft.fft(amplitude)
     #frequencies = np.fft.fftfreq(amplitude.size, d=tlist[1] - tlist[0])
     fft_result = fft(amplitude)
-    frequencies = fftfreq(amplitude.size, d=tlist[1] - tlist[0])
-
+    frequencies = fftfreq(amplitude.size, d=(tlist[1] - tlist[0]))
+    max_freq = max(frequencies)
+    if max_freq > 10 ** 9:
+        freq_unit = 'GHZ'
+        frequencies /= 10 ** 9
+    elif max_freq > 10 ** 6:
+        freq_unit = 'MHZ'
+        frequencies /= 10 ** 6
+    elif max_freq > 10 ** 3:
+        freq_unit = 'kHZ'
+        frequencies /= 10 ** 3
+    else:freq_unit = 'HZ'
+    #frequencies = fftshift(frequencies)
     # 2. Apply the window function in the frequency domain
     # Ensure the window has the same length as the FFT result
     if len(window) != len(fft_result):
         raise ValueError("The window length must be equal to the FFT result length.")
 
     filtered_fft = fft_result * window
-
     # 3. Perform the Inverse Fast Fourier Transform (IFFT) to return to the time domain
-    #filtered_amplitude = np.fft.ifft(filtered_fft)  # Take the real part as the result
-    filtered_amplitude = irfft(filtered_fft)  # Take the real part as the result
+    #filtered_amplitude = 2 * np.fft.ifft(filtered_fft)  # Take the real part as the result
+    filtered_amplitude = 2 * irfft(filtered_fft)  # Take the real part as the result
 
     # 4. Plotting
     plt.figure(figsize=(10, 5))
 
     plt.subplot(1,2, 1)
-    plt.plot(frequencies, np.abs(fft_result),label = 'initial')
-    plt.title('FFT Amplitude')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Magnitude')
+    plt.plot(frequencies, np.abs(fft_result)/max(np.abs(fft_result)),label = 'initial')
+    #plt.plot( np.abs(fft_result)/max(np.abs(fft_result)),label = 'initial')
 
-    plt.plot(frequencies, np.abs(filtered_fft),'--',label = 'filtered')
-    plt.xlabel('Frequency (Hz)')
+    plt.plot(frequencies, np.abs(filtered_fft)/max(np.abs(filtered_fft)),'--',label = 'filtered')
+    #plt.plot(np.abs(filtered_fft)/max(np.abs(filtered_fft)),'--',label = 'filtered')
+    plt.plot(frequencies,window,label='window')
+    plt.title('FFT Amplitude')
+    plt.xlabel(f'Frequency ({freq_unit})')
     plt.ylabel('Magnitude')
-    plt.plot(window)
+    #plt.plot(window,label='window')
     plt.legend(loc='best')
     plt.subplot(1,2, 2)
     plt.plot(tlist, amplitude,label = 'initial')
@@ -101,15 +155,14 @@ def apply_window_fft(tlist, amplitude, window):
     plt.xlabel('Time')
     plt.ylabel('Amplitude')
 
-    #plt.plot(tlist, filtered_amplitude,'--',label='filtered')
-    plt.plot(filtered_amplitude,'--',label='filtered')
+    plt.plot(np.linspace(tlist[0],tlist[-1],len(filtered_amplitude)), filtered_amplitude,'--',label='filtered')
     plt.xlabel('Time')
     plt.ylabel('Amplitude')
     plt.legend(loc='best')
     plt.tight_layout()
     plt.show()
-
     return filtered_amplitude
+
 if __name__ == '__main__':
     # Example Usage
     fs = 100  # Sampling frequency (Hz)
