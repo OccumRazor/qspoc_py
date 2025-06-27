@@ -59,13 +59,18 @@ def control_fft(tlist, amplitudes,fig_name=None):
     else:
         plt.show()
 
+def gen_window(n_fft,threshold):
+    window = np.zeros(n_fft)
+    full_bin = int(0.5 * (n_fft * threshold + 1)) 
+    window[:full_bin] = 1.0
+    end_bin = int(n_fft * threshold + 1)
+    for loc in range(end_bin - full_bin):
+        window[loc + full_bin] = np.sin(-0.5 * np.pi -0.5 * np.pi * loc / (end_bin - full_bin)) ** 2
+    return window
 
 def fft_filter(tlist, amplitude,threshold):
     n_fft = amplitude.size
-    window = np.zeros(n_fft)
-    end_bin = int((n_fft * threshold + 1) // 2) 
-    window[:end_bin] = 1.0
-
+    window = gen_window(n_fft,threshold)
     fft_result = fft(amplitude)
     frequencies = fftfreq(amplitude.size, d=(tlist[1] - tlist[0]))
     max_freq = max(frequencies)
@@ -84,7 +89,6 @@ def fft_filter(tlist, amplitude,threshold):
     # Ensure the window has the same length as the FFT result
     if len(window) != len(fft_result):
         raise ValueError("The window length must be equal to the FFT result length.")
-
     filtered_fft = fft_result * window
     # 3. Perform the Inverse Fast Fourier Transform (IFFT) to return to the time domain
     #filtered_amplitude = 2 * np.fft.ifft(filtered_fft)  # Take the real part as the result

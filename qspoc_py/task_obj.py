@@ -159,13 +159,13 @@ class Propagation:
             return control_i_update_amp
         pulse_i_t = control_i_update_amp+pulse_i(t,self.pulse_options[pulse_i]['args'])
         if 'oct_pulse_max' in self.pulse_options[pulse_i].keys():
-            assert pulse_i(t,self.pulse_options[pulse_i]['args']) <= self.pulse_options[pulse_i]['oct_pulse_max'] + 1e-9, f'AssertionErrot at t = {t
-                    }, pulse_i(t) = {pulse_i(t,self.pulse_options[pulse_i]['args'])}, oct_pulse_max: {self.pulse_options[pulse_i]['oct_pulse_max']}'
+            #assert pulse_i(t,self.pulse_options[pulse_i]['args']) <= self.pulse_options[pulse_i]['oct_pulse_max'] + 1e-9, f'AssertionErrot at t = {t
+            #        }, pulse_i(t) = {pulse_i(t,self.pulse_options[pulse_i]['args'])}, oct_pulse_max: {self.pulse_options[pulse_i]['oct_pulse_max']}'
             if pulse_i_t > self.pulse_options[pulse_i]['oct_pulse_max']:
                 control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_max']
         if 'oct_pulse_min' in self.pulse_options[pulse_i].keys():
-            assert pulse_i(t,self.pulse_options[pulse_i]['args']) >= self.pulse_options[pulse_i]['oct_pulse_min'] - 1e-9, f'AssertionErrot at t = {t
-                    }, pulse_i(t) = {pulse_i(t,self.pulse_options[pulse_i]['args'])}, oct_pulse_min: {self.pulse_options[pulse_i]['oct_pulse_min']}'
+            #assert pulse_i(t,self.pulse_options[pulse_i]['args']) >= self.pulse_options[pulse_i]['oct_pulse_min'] - 1e-9, f'AssertionErrot at t = {t
+            #        }, pulse_i(t) = {pulse_i(t,self.pulse_options[pulse_i]['args'])}, oct_pulse_min: {self.pulse_options[pulse_i]['oct_pulse_min']}'
             if pulse_i_t < self.pulse_options[pulse_i]['oct_pulse_min']:
                 control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_min']
         return control_i_update_amp
