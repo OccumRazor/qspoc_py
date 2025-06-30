@@ -198,11 +198,15 @@ class Propagation:
                     for i in range(self.n_states):
                         Hk_psi = Hk.dot(psi_0[i])
                         control_k_update_amp += np.linalg.norm(chis[i],2) * np.imag(np.inner(np.conjugate(chis[i]),np.reshape(Hk_psi,(state_size))))
-                control_k_update_amp *= update_shape_k_t / oct_lambda_a_k
-                control_k_update_amp = self.check_pulse(t,pulse_k,control_k_update_amp)
-                update_table[pulse_k] = control_k_update_amp
-                ga_return.append(control_k_update_amp * dt)
-                update_return[pulse_k] = control_k_update_amp+pulse_k(t,self.pulse_options[pulse_k]['args'])
+                    control_k_update_amp *= update_shape_k_t / oct_lambda_a_k
+                    control_k_update_amp = self.check_pulse(t,pulse_k,control_k_update_amp)
+                    update_table[pulse_k] = control_k_update_amp
+                    ga_return.append(control_k_update_amp * dt)
+                    update_return[pulse_k] = control_k_update_amp+pulse_k(t,self.pulse_options[pulse_k]['args'])
+                else:
+                    update_table[pulse_k] = 0
+                    ga_return.append(0)
+                    update_return[pulse_k] = pulse_k(t,self.pulse_options[pulse_k]['args'])
         Ht = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
         for i in range(self.n_states):
             psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt)
@@ -257,7 +261,7 @@ class Propagation:
         pulses = []
         for Hi in self.Hamiltonian:
             if isinstance(Hi,list):
-                pulses.append(self.pulse_options[Hi[1]]['args']["fit_func"](self.tlist_long))
+                pulses.append([self.pulse_options[Hi[1]]['args']["fit_func"](self.tlist_long),self.pulse_options[Hi[1]]['oct_lambda_a']])
         return pulses
 
     def plot_pulses(self,ipt_controls = None):
@@ -423,9 +427,10 @@ class Optimization:
     def store_result(self,runfolder,psi_T):
         pulses = self.prop.obtain_pulse_real_sequence()
         for i in range(len(pulses)):
-            control_text = read_write.control2text(self.prop.tlist_long,pulses[i])
-            with open(runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
-                pulse_f.write(control_text)
+            if pulses[i][1]: # If oct_lambda_a == 0, do not print pulse.
+                control_text = read_write.control2text(self.prop.tlist_long,pulses[i][0])
+                with open(runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
+                    pulse_f.write(control_text)
         if self.prop.n_states == 1:
             state_text = read_write.state2text(psi_T[0])
             with open(runfolder+'psi_final_after_oct.dat','w') as state_f:
@@ -630,3 +635,6 @@ class Optimization:
         if runfolder:
             self.store_result(runfolder,psi_T)
         return JT_iter,psi_T
+    
+    def GRAPE_BFGS(self,target_states,runfolder = None, monotonic = False):
+        return 0

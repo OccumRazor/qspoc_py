@@ -34,20 +34,24 @@ def control_fft(tlist, amplitudes,fig_name=None):
     #amplitude = fit(tlist)
     #fft_result = np.fft.fft(amplitude)
     #frequencies = np.fft.fftfreq(amplitude.size, d=tlist[1] - tlist[0])
-    fft_results = [fft(amplitude) for amplitude in amplitudes]
-    frequencies = fftfreq(amplitudes[0].size, d=tlist[1] - tlist[0])
+    fft_results = []
+    for amplitude in amplitudes:
+        if amplitude[1]:
+            fft_results.append(fft(amplitude[0]))
+    frequencies = fftfreq(amplitudes[0][0].size, d=tlist[1] - tlist[0])
 
     plt.figure(figsize=(10, 5))
 
     plt.subplot(1,2, 1)
     for i in range(len(amplitudes)):
-        plt.plot(tlist, amplitudes[i],label = rf'$\epsilon_{i}$')
+        if amplitudes[i][1]:
+            plt.plot(tlist, amplitudes[i][0],label = rf'$\epsilon_{i}$')
     plt.title('FFT Amplitude')
     plt.xlabel('t')
     plt.ylabel('Control')
     plt.legend(loc='best')
     plt.subplot(1,2, 2)
-    for i in range(len(amplitudes)):
+    for i in range(len(fft_results)):
         plt.plot(frequencies, np.abs(fft_results[i]),'--',label = rf'$\epsilon_{i}$')
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Magnitude')
