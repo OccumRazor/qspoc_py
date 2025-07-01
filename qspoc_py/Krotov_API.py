@@ -1,8 +1,12 @@
-import propagation_method,qutip
+import qutip
 from scipy.sparse.linalg import eigsh
 from scipy.sparse import csc_matrix
+from . import propagation_method
+from scipy.linalg import ishermitian
 
 def KROTOV_CHEBY(H,state,dt,c_ops=None,backwards=False,initialize=False):
+    #if not isinstance(state,qutip.Qobj):
+        #state = qutip.Qobj(state)
     if c_ops is None:
         c_ops = []
     if len(c_ops) > 0:
@@ -17,14 +21,17 @@ def KROTOV_CHEBY(H,state,dt,c_ops=None,backwards=False,initialize=False):
             Ht += part[1] * part[0]
         else:
             Ht += part
-    ok_types = (state.type == 'oper' and Ht.type == 'super') or (
-        state.type in ['ket', 'bra'] and Ht.type == 'oper'
-    )
+    #ok_types = (state.type == 'oper' and Ht.type == 'super') or (
+    #    state.type in ['ket', 'bra'] and Ht.type == 'oper'
+    #)
     Ht = Ht.full()
+    if not ishermitian(Ht):
+        print('not Herm')
     eig_vals = eigsh(Ht,return_eigenvectors=False)
     E_max = max(eig_vals)
     E_min = min(eig_vals)
     return qutip.Qobj(propagation_method.Chebyshev(Ht,state.full(),E_max,E_min,dt,backwards = backwards))
+    #return propagation_method.Chebyshev(Ht,state,E_max,E_min,dt,backwards = backwards)
 
 '''
 Somehow this implementation is way slower.

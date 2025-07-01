@@ -346,6 +346,10 @@ class Optimization:
     def set_observables(self,observables):
         self.observables = observables
 
+    def set_PE_objectives(self,basis,w = 0.5):
+        self.PE_basis = basis
+        self.chis_PE = J_T_local.chis_PE(basis,w)
+
     def store_initial_controls(self):
         initial_controls = {}
         for Hi in self.prop.Hamiltonian:
@@ -475,7 +479,7 @@ class Optimization:
     '''
 
 
-    def Krotov_optimization(self,chi_constructor,JT,runfolder = None, monotonic = False):
+    def Krotov_optimization(self,func_num = 0,runfolder = None, monotonic = False):
         if runfolder:
             self.config(runfolder)
         self.store_initial_controls()
@@ -484,7 +488,9 @@ class Optimization:
         psi_T = self.prop.propagate()
         psi_T_last_step = copy.deepcopy(psi_T)
         tac = time.time()
-        JT_iter.append(JT(psi_T,self.target_states))
+        if func_num == 0:JT_0 = J_T_local.JT_ss(psi_T,self.target_states)
+        if func_num == 1:JT_0 = J_T_local.JT_PE(psi_T,self.PE_basis)
+        JT_iter.append(JT_0)
         iter_str_len = len(str(self.oct_info['iter_stop'])) + 2
         if runfolder:
             out_stream = open(runfolder + 'oct_iters.dat','w')
@@ -498,7 +504,8 @@ class Optimization:
         else:print(message)
         ga_bound = 10000
         for iters in range(1,self.oct_info['iter_stop'] + 1):
-            chis_T = chi_constructor(psi_T,self.target_states)
+            if func_num == 0 :chis_T = J_T_local.chis_ss(psi_T,self.target_states)
+            if func_num == 1:chis_T = self.chis_PE(psi_T)
             tic = time.time()
             chis_t = self.prop.propagate(True,True,False,prop_options={'initial_states':chis_T})
             chis_t.reverse()
@@ -514,7 +521,8 @@ class Optimization:
                 #psi_T = psi_T_last_step
                 #break
             psi_T_last_step = copy.deepcopy(psi_T)
-            JT_new = JT(psi_T,self.target_states)
+            if func_num == 0:JT_new = J_T_local.JT_ss(psi_T,self.target_states)
+            if func_num == 1:JT_new = J_T_local.JT_PE(psi_T,self.PE_basis)
             if all([JT_new > JT_iter[-1] and monotonic]) or ga_int > ga_bound:
                 if JT_new > JT_iter[-1]:message = f'#{' ' * (iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new}, increase lambda_a by a factor of 2.'
                 else:message = f'# ga_int ({ga_int}) > ga_bound ({ga_bound}), increase lambda_a by a factor of 2.'
