@@ -87,8 +87,8 @@ def JT_PE(basis,w):
         conc = Weyl.concurrence(c1,c2,c3)
         Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         F_PE = (1-w) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + w * Delta_U
-        print("    F_PE: %f\n    gate conc.: %f Delta_U: %f" % (F_PE, conc, w * Delta_U))
-        return F_PE
+        #print("    F_PE: %f\n    gate conc.: %f Delta_U: %f" % (F_PE, conc, w * Delta_U))
+        return [F_PE,conc,w*Delta_U]
     return JT
 
 def chis_PE(canonical_basis,w):

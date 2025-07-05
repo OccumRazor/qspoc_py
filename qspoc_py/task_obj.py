@@ -1,5 +1,5 @@
 import numpy as np,time,copy,matplotlib.pyplot as plt,random,time 
-from . import localTools,read_write,propagation_method,fft_main,J_T_local
+from . import localTools,read_write,propagation_method,fft_main,J_T_local,iter_info_manager
 from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
@@ -450,40 +450,6 @@ class Optimization:
                 with open(runfolder+f'psi_{i}_final_after_oct.dat','w') as state_f:
                     state_f.write(state_text)
 
-    '''
-    def Krotov_run(self,runfolder,functional_name):
-        path_Path = Path(runfolder)
-        path_Path.mkdir(exist_ok=True,parents=True)
-        if self.oct_info['oct_method'] != 'krotov':
-            raise KeyError(f"Currently, only krotov and crab is supported for the optimization. Input prop_method: {self.oct_info['oct_method']}")
-        if self.prop.prop_method == 'cheby':propagator=Krotov_API.KROTOV_CHEBY
-        elif self.prop.prop_method == 'expm':propagator=krotov.propagators.expm
-        else:raise KeyError(f"Currently, only cheby and expm is supported for the propagation. Input prop_method: {self.prop.prop_method}")
-        opt_functionals=J_T_local.functional_master(functional_name)
-        objectives=[krotov.Objective(initial_state=self.prop.initial_states[i],target=self.target_states[i],H=self.prop.Hamiltonian) for i in range(self.prop.n_states)]
-        self.prop.krotov_pulse_options()
-        out_file = open(runfolder+self.oct_info['iter_dat'],'w')
-        opt_result=krotov.optimize_pulses(
-                objectives,self.prop.Krotov_pulse_ops,self.prop.tlist_long,
-                propagator=propagator,
-                chi_constructor=opt_functionals[0],
-                info_hook=krotov.info_hooks.print_table(
-                    J_T=opt_functionals[1],
-                    show_g_a_int_per_pulse=True,
-                    unicode=False,
-                    col_formats=('%d', '%.13e', '%.13e', '%.13e', '%.13e', '%.13e', '%.13e', '%d'),
-                    out=out_file),
-                check_convergence=krotov.convergence.Or(
-                    krotov.convergence.value_below(self.oct_info['JT_conv'], name='J_T'),
-                    krotov.convergence.delta_below(self.oct_info['delta_JT_conv']),
-                    krotov.convergence.check_monotonic_error),
-                iter_stop=self.oct_info['iter_stop'],store_all_pulses=False)
-        out_file.close()
-        self.write2runfolder(runfolder,opt_result)
-        return opt_result
-    '''
-
-
     def Krotov_optimization(self,func_num = 0,runfolder = None, monotonic = False):
         if runfolder:
             self.config(runfolder)
@@ -493,20 +459,17 @@ class Optimization:
         psi_T = self.prop.propagate()
         psi_T_last_step = copy.deepcopy(psi_T)
         tac = time.time()
-        if func_num == 0:JT_0 = J_T_local.JT_ss(psi_T,self.target_states)
-        if func_num == 1:JT_0 = self.F_PE(psi_T)
-        JT_iter.append(JT_0)
-        iter_str_len = len(str(self.oct_info['iter_stop'])) + 2
-        if runfolder:
-            out_stream = open(runfolder + 'oct_iters.dat','w')
-        message = f'#{' ' * (iter_str_len - 3)}iter{' ' * 4}JT{' ' * 12}dJT{' ' * 11}ga_int{' ' * 8}dt'
-        if runfolder:out_stream.write(message+'\n')
-        else:print(message)
-        message = f'{' ' * (iter_str_len-1)}0{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{'n/a':>10}{' ' * 4}{'n/a':>10}{' ' * 4}{tac - tic:.2f}'
-        if runfolder:
-            out_stream.write(message+'\n')
-            out_stream.flush()
-        else:print(message)
+        if func_num == 0:
+            JT_0 = [J_T_local.JT_ss(psi_T,self.target_states)]
+            n_JT = 1
+            JT_name = None
+        if func_num == 1:
+            JT_0 = self.F_PE(psi_T)
+            n_JT = 3
+            JT_name = ['JT','gate_conc','delta_U']
+        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,n_JT,JT_name,0)
+        iter_log.log_iter_info(0,JT_0,tac-tic,0,0)
+        JT_iter.append(JT_0[0])
         ga_bound = 10000
         for iters in range(1,self.oct_info['iter_stop'] + 1):
             if func_num == 0 :chis_T = J_T_local.chis_ss(psi_T,self.target_states)
@@ -526,31 +489,19 @@ class Optimization:
                 #psi_T = psi_T_last_step
                 #break
             psi_T_last_step = copy.deepcopy(psi_T)
-            if func_num == 0:JT_new = J_T_local.JT_ss(psi_T,self.target_states)
+            if func_num == 0:JT_new = [J_T_local.JT_ss(psi_T,self.target_states)]
             if func_num == 1:JT_new = self.F_PE(psi_T)
-            if all([JT_new > JT_iter[-1] and monotonic]) or ga_int > ga_bound:
-                if JT_new > JT_iter[-1]:message = f'#{' ' * (iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new}, increase lambda_a by a factor of 2.'
-                else:message = f'# ga_int ({ga_int}) > ga_bound ({ga_bound}), increase lambda_a by a factor of 2.'
-                if runfolder:
-                    out_stream.write(message+'\n')
-                    out_stream.flush()
-                else:print(message)
+            if all([JT_new[0] > JT_iter[-1] and monotonic]) or ga_int > ga_bound:
+                iter_log.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound)
                 psi_T = copy.deepcopy(psi_T_last_step)
                 self.prop.change_lambda_a(2)
             else:
                 psi_T_last_step = copy.deepcopy(psi_T)
-                JT_iter.append(JT_new)
+                iter_log.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],ga_int)
+                JT_iter.append(JT_new[0])
                 self.update_control(new_controls,'last')
-                message = f'{' ' * (iter_str_len - len(str(iters)))}{iters}{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{JT_iter[-2] - JT_iter[-1]:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{tac - tic:.2f}'
-                if runfolder:
-                    self.store_result(runfolder,psi_T)
-                    out_stream.write(message+'\n')
-                    out_stream.flush()
-                else:print(message)
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
-                    message = f'# stop condition met (JT_iter[-1] < {self.oct_info['JT_conv']}: {JT_iter[-1] < self.oct_info['JT_conv']}, dJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']}), break'
-                    if runfolder:out_stream.write(message+'\n')
-                    else:print(message)
+                    iter_log.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
         if runfolder:
             self.store_result(runfolder,psi_T)
@@ -569,9 +520,10 @@ class Optimization:
         new_pulses = {}
         dt = tlist[1] - tlist[0]
         ga = []
-        for i in range(len(Hamiltonian)):
-            if isinstance(Hamiltonian[i],list):
-                oct_lambda_a = pulse_options[Hamiltonian[i][1]]['oct_lambda_a']
+        #for i in range(len(Hamiltonian)):
+        for H_i in Hamiltonian:
+            if isinstance(H_i,list):
+                oct_lambda_a = pulse_options[H_i[1]]['oct_lambda_a']
                 if oct_lambda_a:
                     epsilon = 1 / oct_lambda_a
                     id_pulse = []
@@ -579,72 +531,75 @@ class Optimization:
                     for j in range(len(tlist)):
                         Delta_it = 0
                         for k in range(n_states):
-                            Hi_psi = Hamiltonian[i][0].dot(psi_t[j][k])
+                            Hi_psi = H_i[0].dot(psi_t[j][k])
                             Delta_it += 2 * dt * np.imag(np.inner(np.conjugate(lambda_t[j][k]),np.reshape(Hi_psi,(state_size))))
                             #Delta_it += np.real(-1j * dt * np.trace(np.matmul(lambda_t[j][k],
-                            #            np.matmul(Hamiltonian[i][0],psi_t[j][k])-np.matmul(psi_t[j][k],Hamiltonian[i][0]))))
-                        update_amp = pulse_options[Hamiltonian[i][1]]['update_shape'](tlist[j])*epsilon*Delta_it
-                        update_amp = self.prop.check_pulse(tlist[j],self.prop.Hamiltonian[i][1],update_amp)
-                        id_pulse.append(Hamiltonian[i][1](tlist[j],pulse_options[Hamiltonian[i][1]]['args'])+update_amp)
+                            #            np.matmul(H_i[0],psi_t[j][k])-np.matmul(psi_t[j][k],H_i[0]))))
+                        update_amp = pulse_options[H_i[1]]['update_shape'](tlist[j])*epsilon*Delta_it
+                        update_amp = self.prop.check_pulse(tlist[j],H_i[1],update_amp)
+                        id_pulse.append(H_i[1](tlist[j],pulse_options[H_i[1]]['args'])+update_amp)
                         id_ga += np.abs(update_amp)
-                    new_pulses[Hamiltonian[i][1]] = id_pulse
+                    new_pulses[H_i[1]] = id_pulse
                     ga.append(id_ga)
+                else:
+                    new_pulses[H_i[1]] = H_i[1](tlist,pulse_options[H_i[1]]['args'])
+                    ga.append(0)
         return new_pulses,sum(ga)/len(ga)
 
-    def GRAPE(self,target_states,runfolder = None, monotonic = False):
+    def GRAPE(self,func_num,runfolder = None, monotonic = False):
         if runfolder:
             self.config(runfolder)
         self.store_initial_controls()
         JT_iter = []
-        n_states = len(target_states)
-        iter_str_len = len(str(self.oct_info['iter_stop']+1)) + 2
-        if runfolder:
-            out_stream = open(runfolder + 'oct_iters.dat','w')
-        message = f'#{' ' * (iter_str_len - 3)}iter{' ' * 4}JT{' ' * 12}dJT{' ' * 11}ga_int{' ' * 8}dt'
-        if runfolder:out_stream.write(message+'\n')
-        else:print(message)
+        if func_num == 0:
+            n_JT = 1
+            JT_name = None
+        if func_num == 1:
+            n_JT = 3
+            JT_name = ['JT','gate_conc','delta_U']
+        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,n_JT,JT_name,1)
         for iters in range(self.oct_info['iter_stop']):
             tic_0 = time.time()
             psi_t = self.prop.propagate(False,True)
             psi_T = psi_t[-1]
             tac_0 = time.time()
-            JT_iter.append(J_T_local.JT_tau(psi_T,target_states))
-            if iters:message = f'  {' ' * (iter_str_len - len(str(iters)))}{iters}{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{JT_iter[-1] - JT_iter[-2]:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{tac_0 + tac_1 - tic_0 - tic_1:.2f}'
-            else:message = f'  {' ' * (iter_str_len-1)}0{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{'n/a':>10}{' ' * 4}{'n/a':>10}{' ' * 4}{tac_0 - tic_0:.2f}'
-            if runfolder:
-                out_stream.write(message+'\n')
-                out_stream.flush()
-            else:print(message)
+            if func_num == 0:
+                JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
+            if func_num == 1:
+                JT_new = self.F_PE(psi_T)
             if iters:
-                if JT_iter[-2] > JT_iter[-1] and monotonic:
-                    message = f'#{' ' * (iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_iter[-1]}, increase lambda_a by a factor of 2.'
-                    if runfolder:
-                        out_stream.write(message+'\n')
-                        out_stream.flush()
-                    else:print(message)
+                if JT_iter[-1] > JT_new[0] and monotonic:
+                    iter_log.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound = 1e10)
                     self.prop.change_lambda_a(2)
-                if JT_iter[-1] > self.oct_info['JT_conv'] or np.abs(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
-                    message = f'''# stop condition met (JT_iter[-1] > {self.oct_info['JT_conv']}: {JT_iter[-1] > self.oct_info['JT_conv']}, 
-                                dJT < {self.oct_info['delta_JT_conv']}: {(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']}), break'''
-                    if runfolder:out_stream.write(message+'\n')
-                    else:print(message)
-                    break
+                    JT_iter.append(JT_new[0])
             tic_1 = time.time()
-            lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':target_states})
-            new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.prop.Hamiltonian,self.prop.tlist_long,n_states,self.prop.pulse_options)
+            if func_num == 0:
+                lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':self.target_states})
+            if func_num == 1:
+                lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':self.chis_PE(psi_T)})
+            new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.prop.Hamiltonian,self.prop.tlist_long,self.prop.n_states,self.prop.pulse_options)
             tac_1 = time.time()
             self.update_control(new_pulses,'last')
+            if iters:
+                iter_log.log_iter_info(iters,JT_new,tac_1-tic_0,JT_iter[-1],ga_int)
+            else:
+                iter_log.log_iter_info(0,JT_new,tac_0-tic_0,0,0)
+            JT_iter.append(JT_new[0])
+            if iters:
+                if JT_iter[-1] > self.oct_info['JT_conv'] or np.abs(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
+                    iter_log.log_stop_info(JT_new,self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
+                break
         if iters == self.oct_info['iter_stop'] - 1:
             iters += 1
-            tic_0 = time.time()
+            tic = time.time()
             psi_T = self.prop.propagate(False,False)
-            tac_0 = time.time()
-            JT_iter.append(J_T_local.JT_tau(psi_T,target_states))
-            message = f'  {' ' * (iter_str_len - len(str(iters)))}{iters}{' ' * 4}{JT_iter[-1]:.8f}{' ' * 4}{JT_iter[-1] - JT_iter[-2]:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{tac_0 + tac_1 - tic_0 - tic_1:.2f}'
-            if runfolder:
-                out_stream.write(message+'\n')
-                out_stream.flush()
-            else:print(message)
+            tac = time.time()
+            if func_num == 0:
+                JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
+            if func_num == 1:
+                JT_new = self.F_PE(psi_T)
+            iter_log.log_iter_info(0,JT_new[0],tac-tic,JT_iter[-1],0)
+            JT_iter.append(JT_new[0])
         if runfolder:
             self.store_result(runfolder,psi_T)
         return JT_iter,psi_T
