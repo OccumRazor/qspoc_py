@@ -123,7 +123,7 @@ def matrixReader(file_name, max_dim, zero_base = True):
             mat = np.zeros([max_dim, max_dim], dtype=np.complex128)
         except Exception:
             vals = np.loadtxt(file_name, usecols=(2))
-            mat = np.zeros([max_dim, max_dim])
+            mat = np.zeros([max_dim, max_dim], dtype=np.complex128)
         mat[rows][cols] += vals
         return mat
     rows, cols = np.split(np.loadtxt(file_name, usecols=(0, 1)), 2, axis=1)
@@ -134,7 +134,7 @@ def matrixReader(file_name, max_dim, zero_base = True):
     except Exception:
         vals = np.loadtxt(file_name, usecols=(2))
         vals = vals.T
-        mat = np.zeros([max_dim, max_dim])
+        mat = np.zeros([max_dim, max_dim], dtype=np.complex128)
     rows = rows.T[0]
     cols = cols.T[0]
     if not zero_base:

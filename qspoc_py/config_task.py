@@ -96,6 +96,10 @@ def config_prop(path,zero_base = True):
     tlist = [float(config['tgrid']['main']['t_start']),float(config['tgrid']['main']['t_stop']),int(config['tgrid']['main']['nt'])]
     pulses_info = [config['pulse']['subsections'][i] for i in range(len(config['pulse']['subsections']))]
     for i in range(len(pulses_info)):
+        for key in pulses_info[i].keys():
+            if key in task_obj.str2float_keys:
+                pulses_info[i][key] = float(pulses_info[i][key])
+    for i in range(len(pulses_info)):
         for key in config['pulse']['main'].keys():
             if key in task_obj.str2float_keys:pulses_info[i][key] = float(config['pulse']['main'][key])
             else:pulses_info[i][key] = config['pulse']['main'][key]
@@ -105,23 +109,25 @@ def config_prop(path,zero_base = True):
             detupleTlist, detupleGuess, kind="cubic", fill_value="extrapolate")
         pulses_info[i]['args'] = {"fit_func": cubicSpline_fit}
     Hamiltonian_info = [config['ham']['subsections'][i] for i in range(len(config['ham']['subsections']))]
-    Ham_pulse_Table = []
+    Ham_pulse_Table = {}
     for i in range(len(Hamiltonian_info)):
         if 'pulse_id' in Hamiltonian_info[i].keys():
-            Ham_pulse_Table.append(Hamiltonian_info[i]['pulse_id'])
-        else:
-            Ham_pulse_Table.append(False)
+            Ham_pulse_Table[int(Hamiltonian_info[i]['pulse_id'])] = i
+            #Ham_pulse_Table.append(int(Hamiltonian_info[i]['pulse_id']))
+        #else:Ham_pulse_Table.append(False)
         for key in config['ham']['main'].keys():
             Hamiltonian_info[i][key] = config['ham']['main'][key]
     Hamiltonian = [[read_write.matrixReader(path+Hamiltonian_info[i]['filename'],int(Hamiltonian_info[i]['dim']),zero_base),lambda t,args:localTools.random_guess(t,args)
                     ] if 'pulse_id' in Hamiltonian_info[i].keys() else
                     read_write.matrixReader(path+Hamiltonian_info[i]['filename'],int(Hamiltonian_info[i]['dim']),zero_base) for i in range(len(Hamiltonian_info))]
     pulse_options = {}
+    print(Ham_pulse_Table)
     for i in range(len(pulses_info)):
-        pulse_id = pulses_info[i]['pulse_id']
-        pulses_info[i].pop('pulse_id')
-        pulses_info[i].pop('filename')
-        pulse_options[Hamiltonian[Ham_pulse_Table.index(pulse_id)][1]] = pulses_info[i]
+        pulse_id = int(pulses_info[i]['pulse_id'])
+        #pulses_info[i].pop('pulse_id')
+        #pulses_info[i].pop('filename')
+        #print(f'{pulse_id} {Ham_pulse_Table.index(pulse_id)}')
+        pulse_options[Hamiltonian[Ham_pulse_Table[pulse_id]][1]] = pulses_info[i]
     initial_states = []
     for i in range(len(config['psi']['subsections'])):
         if config['psi']['subsections'][i]['label'] == 'initial':

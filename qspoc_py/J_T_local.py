@@ -13,8 +13,16 @@ def chis_taus(state,ref):
     #return -tau(state,ref) * ref
     return ref
 
-def J_T_re(state,ref):
-    return 1-np.real(tau(state,ref))
+def JT_re(states,refs):
+    if isinstance(states,list):
+        val = 0
+        for i in range(len(states)):
+            tau_val = tau(states[i],refs[i])
+            val += 1-np.real(tau_val)
+        return val / len(states)
+    else:
+        tau_val = tau(states,refs)
+        return 1-np.real(tau_val)
 
 def J_T_abs(state,ref):
     return 1-np.abs(tau(state,ref))
@@ -58,27 +66,30 @@ def JT_ss(states,refs):
 
 from . import Weyl
 
+'''
 def JT_PE(states,basis):
-    U = Weyl.stat2gate(basis,states)
+    U = Weyl.state2gate(basis,states)
     c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
     g1,g2,g3 = Weyl.c2g(c1,c2,c3)
     conc = Weyl.concurrence(c1,c2,c3)
     F_PE = g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0
     print("    F_PE: %f\n    gate conc.: %f" % (F_PE, conc))
     return F_PE
+'''
 
-def stat2gate(basis,states):
-    basis = copy.deepcopy(basis)
-    states = copy.deepcopy(states)
-    state_size = basis[0].shape[0]
-    for i in range(4):
-        basis[i] = np.conjugate(np.reshape(basis[i],state_size))
-        states[i] = np.conjugate(np.reshape(states[i],state_size))
-    U = np.zeros([4,4],dtype=np.complex128)
-    for j in range(4):
-        for i in range(4):
-            U[i,j] = np.inner(basis[i],states[j])
-    return U
+def JT_PE(basis,w):
+    if w < 0: w = 0
+    if w > 1: w = 1
+    def JT(psi_T):
+        U = Weyl.state2gate(basis,psi_T)
+        c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
+        g1,g2,g3 = Weyl.c2g(c1,c2,c3)
+        conc = Weyl.concurrence(c1,c2,c3)
+        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+        F_PE = (1-w) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + w * Delta_U
+        print("    F_PE: %f\n    gate conc.: %f Delta_U: %f" % (F_PE, conc, w * Delta_U))
+        return F_PE
+    return JT
 
 def chis_PE(canonical_basis,w):
     if w < 0: w = 0
@@ -88,22 +99,18 @@ def chis_PE(canonical_basis,w):
     state_size = bell_basis_TP[0].shape[0]
     for i in range(4):
         bell_basis_TP[i] = np.conjugate(np.reshape(bell_basis_TP[i],state_size))
-    def chi_constructor(fw_states_T, **kwargs):
-        psi_T_TP = copy.deepcopy(fw_states_T)
+    def chi_constructor(psi_T):
+        psi_T_TP = copy.deepcopy(psi_T)
         for i in range(4):
             psi_T_TP[i] = np.reshape(psi_T_TP[i],state_size)
-        # *args is ignored, it exists so that the chi_constructor fits the
-        # krotov API directly
-        UB = Weyl.stat2gate(bell_basis, fw_states_T)
+        UB = Weyl.state2gate(bell_basis, psi_T)
         A = (Weyl.Qmagic * Weyl._get_a_kl_PE(UB)) / 2
-
         chis = Weyl.mapped_basis(A, canonical_basis)
-
         # unitarity corrections
-        n = len(fw_states_T)
+        n = len(psi_T)
         chis_out = []
         for i in range(n):
-            bell_proj = np.zeros(shape=fw_states_T[i].shape,dtype = np.complex128)
+            bell_proj = np.zeros(shape=psi_T[i].shape,dtype = np.complex128)
             for j in range(n):
                 bell_proj += np.inner(bell_basis_TP[j],psi_T_TP[i]) \
                              * bell_basis[j]

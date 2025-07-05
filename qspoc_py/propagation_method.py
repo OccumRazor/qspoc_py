@@ -37,6 +37,9 @@ def expm(herm_mat,initial_state,dt,backwards = False):
     return Ut.dot(initial_state)
 
 def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,backwards = False):
+    '''
+    herm_mat: H(t), where t is not passed to Chebyshev().
+    '''
     Delta = E_max - E_min
     R = Delta  * dt / 2
     max_eval = int(4 * np.abs(R))

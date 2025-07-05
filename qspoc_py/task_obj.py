@@ -49,21 +49,21 @@ def dict2string(ipt_dict):
             raise KeyError('Anyway the format of the input dictionary does not match.')
     return text_content
 
-def E_min_max(Hamiltonian,tlist,pulse_options,oct_increase_factor = 1):
+def E_min_max(Hamiltonian,tlist,pulse_options):
     Hamiltonian = copy.deepcopy(Hamiltonian)
     assert isinstance(Hamiltonian,list) and len(Hamiltonian) > 0
     if isinstance(Hamiltonian[0],list):
         p_0 = Hamiltonian[0][1](tlist,pulse_options[Hamiltonian[0][1]]['args'])
-        H_min = oct_increase_factor * min(p_0) * Hamiltonian[0][0]
-        H_max = oct_increase_factor * max(p_0) * Hamiltonian[0][0]
+        H_min = min(p_0) * Hamiltonian[0][0]
+        H_max = max(p_0) * Hamiltonian[0][0]
     else:
         H_min = Hamiltonian[0]
         H_max = Hamiltonian[0]
     for H_i in Hamiltonian[1:]:
         if isinstance(H_i,list):
             p_i = H_i[1](tlist,pulse_options[H_i[1]]['args'])
-            H_min += oct_increase_factor * min(p_i) * H_i[0]
-            H_min += oct_increase_factor * max(p_i) * H_i[0]
+            H_min += min(p_i) * H_i[0]
+            H_min += max(p_i) * H_i[0]
         else:
             H_min += H_i
             H_max += H_i
@@ -126,10 +126,9 @@ class Propagation:
         self.pulse_options = pulse_options
         self.c_ops = None
         self.shape_function()
-        self.oct_increase_factor = 1
         self.sparsity = sparsity(self.Hamiltonian)
         if self.sparsity > 0.85:self.Hamiltonian = sparse_Ham(self.Hamiltonian)
-        self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
+        self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options)
     
     def add_dissipator(self,c_ops):
         self.c_ops = c_ops
@@ -246,9 +245,10 @@ class Propagation:
     def update_control(self,new_controls):
         for H_i in self.Hamiltonian:
             if isinstance(H_i,list):
-                self.pulse_options[H_i[1]]['args']["fit_func"] =  interp1d(
-                self.tlist_long, new_controls[H_i[1]], kind="cubic", fill_value="extrapolate")
-        self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options,self.oct_increase_factor)
+                if H_i[1] in new_controls.keys():
+                    self.pulse_options[H_i[1]]['args']["fit_func"] =  interp1d(
+                    self.tlist_long, new_controls[H_i[1]], kind="cubic", fill_value="extrapolate")
+        self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options)
 
     def obtain_pulse(self):
         pulses = {}
@@ -347,7 +347,12 @@ class Optimization:
         self.observables = observables
 
     def set_PE_objectives(self,basis,w = 0.5):
-        self.PE_basis = basis
+        Bell_basis_states = [np.sqrt(0.5) * (self.prop.initial_states[0] + self.prop.initial_states[3]),
+                             1j * np.sqrt(0.5) * (self.prop.initial_states[0] - self.prop.initial_states[3]),
+                             1j * np.sqrt(0.5) * (self.prop.initial_states[1] + self.prop.initial_states[2]),
+                             np.sqrt(0.5) * (self.prop.initial_states[1] - self.prop.initial_states[2])]
+        self.prop.initial_states = Bell_basis_states
+        self.F_PE = J_T_local.JT_PE(Bell_basis_states,w)
         self.chis_PE = J_T_local.chis_PE(basis,w)
 
     def store_initial_controls(self):
@@ -489,7 +494,7 @@ class Optimization:
         psi_T_last_step = copy.deepcopy(psi_T)
         tac = time.time()
         if func_num == 0:JT_0 = J_T_local.JT_ss(psi_T,self.target_states)
-        if func_num == 1:JT_0 = J_T_local.JT_PE(psi_T,self.PE_basis)
+        if func_num == 1:JT_0 = self.F_PE(psi_T)
         JT_iter.append(JT_0)
         iter_str_len = len(str(self.oct_info['iter_stop'])) + 2
         if runfolder:
@@ -522,7 +527,7 @@ class Optimization:
                 #break
             psi_T_last_step = copy.deepcopy(psi_T)
             if func_num == 0:JT_new = J_T_local.JT_ss(psi_T,self.target_states)
-            if func_num == 1:JT_new = J_T_local.JT_PE(psi_T,self.PE_basis)
+            if func_num == 1:JT_new = self.F_PE(psi_T)
             if all([JT_new > JT_iter[-1] and monotonic]) or ga_int > ga_bound:
                 if JT_new > JT_iter[-1]:message = f'#{' ' * (iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new}, increase lambda_a by a factor of 2.'
                 else:message = f'# ga_int ({ga_int}) > ga_bound ({ga_bound}), increase lambda_a by a factor of 2.'

@@ -15,7 +15,7 @@ def from_magic(A):
         raise ValueError("Gates must have a 4×4 shape")
     return np.matmul(Qmagic,np.matmul(A,Qmagic_HC))
 
-def stat2gate(basis,states):
+def state2gate(basis,states):
     basis = copy.deepcopy(basis)
     states = copy.deepcopy(states)
     state_size = basis[0].shape[0]
