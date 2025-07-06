@@ -500,11 +500,11 @@ class Optimization:
                 iter_log.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],ga_int)
                 JT_iter.append(JT_new[0])
                 self.update_control(new_controls,'last')
+                self.store_result(runfolder,psi_T)
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
                     iter_log.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
-        if runfolder:
-            self.store_result(runfolder,psi_T)
+        #if runfolder:self.store_result(runfolder,psi_T)
         return JT_iter,psi_T
 
     def GRAPE_update_pulse(self,psi_t,lambda_t,Hamiltonian,tlist,n_states,pulse_options):
@@ -588,7 +588,7 @@ class Optimization:
             if iters:
                 if JT_iter[-1] > self.oct_info['JT_conv'] or np.abs(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
                     iter_log.log_stop_info(JT_new,self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
-                break
+                    break
         if iters == self.oct_info['iter_stop'] - 1:
             iters += 1
             tic = time.time()
@@ -598,7 +598,7 @@ class Optimization:
                 JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
             if func_num == 1:
                 JT_new = self.F_PE(psi_T)
-            iter_log.log_iter_info(0,JT_new[0],tac-tic,JT_iter[-1],0)
+            iter_log.log_iter_info(0,JT_new,tac-tic,JT_iter[-1],0)
             JT_iter.append(JT_new[0])
         if runfolder:
             self.store_result(runfolder,psi_T)
