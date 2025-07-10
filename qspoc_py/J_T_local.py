@@ -27,10 +27,12 @@ def JT_re(states,refs):
 def J_T_abs(state,ref):
     return 1-np.abs(tau(state,ref))
 
-def chis_tau(state,ref):
+#def chis_tau(state,ref):
+def chis_tau(ref,state):
     return ref
 
-def JT_tau(states,refs):
+#def JT_tau(states,refs):
+def JT_tau(refs,states):
     if isinstance(states,list):
         val = 0
         for i in range(len(states)):
@@ -41,7 +43,8 @@ def JT_tau(states,refs):
         tau_val = tau(states,refs)
         return np.real(tau_val*np.conjugate(tau_val))
 
-def chis_ss(states,refs):
+#def chis_ss(states,refs):
+def chis_ss(refs,states):
     if isinstance(states,list):
         chis = []
         for i in range(len(states)):
@@ -53,7 +56,8 @@ def chis_ss(states,refs):
     else:
         return tau(states[i],refs[i]) * refs[i]
 
-def JT_ss(states,refs):
+#def JT_ss(states,refs):
+def JT_ss(refs,states):
     if isinstance(states,list):
         val = 0
         for i in range(len(states)):
@@ -88,6 +92,7 @@ def JT_PE(basis,w):
         Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         F_PE = (1-w) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + w * Delta_U
         #print("    F_PE: %f\n    gate conc.: %f Delta_U: %f" % (F_PE, conc, w * Delta_U))
+        #return F_PE
         return [F_PE,conc,w*Delta_U]
     return JT
 

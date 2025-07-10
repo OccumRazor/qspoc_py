@@ -1,5 +1,6 @@
 import numpy as np,time,copy,matplotlib.pyplot as plt,random,time 
 from . import localTools,read_write,propagation_method,fft_main,J_T_local,iter_info_manager
+from scipy.optimize import fmin_l_bfgs_b
 from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
@@ -169,18 +170,40 @@ class Propagation:
                 control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_min']
         return control_i_update_amp
 
-    def propagate_sg(self,dt,t,psi_0,backwards=False):
+    def propagate_sg(self,dt,t,psi_0,backwards=False,h=0,chis_t=None):
         psi_0 = copy.deepcopy(psi_0)
-        dt = self.tlist_long[1] - self.tlist_long[0]
         Ht = H_t(self.Hamiltonian,t,self.pulse_options)
+        if h:
+            state_size = psi_0[0].size
+            grad = []
+            update_table = {}
+            for k in range(len(self.Hamiltonian)):
+                if isinstance(self.Hamiltonian[k],list):
+                    update_table[self.Hamiltonian[k][1]] = 0
+            for k in range(len(self.Hamiltonian)):
+                if isinstance(self.Hamiltonian[k],list):
+                    pulse_k = self.Hamiltonian[k][1]
+                    oct_lambda_a_k = self.pulse_options[pulse_k]['oct_lambda_a']
+                    if oct_lambda_a_k:
+                        update_table[pulse_k] = h
+                        Hkp = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
+                        update_table[pulse_k] = -h
+                        Hkm = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
+                        update_table[pulse_k] = 0
+                        grad_H = (Hkp-Hkm)/h
+                        grad_i = 0.
+                        for i in range(self.n_states):
+                            Hk_psi = grad_H.dot(chis_t[i])
+                            grad_i -= np.real(np.inner(np.conjugate(np.reshape(psi_0[i],(state_size))),np.reshape(Hk_psi,(state_size))))
+                        grad.append(grad_i)
         for i in range(self.n_states):
             psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
-        return psi_0
+        if h:return psi_0,grad
+        else:return psi_0
 
     def propagate_sg_update(self,dt,t,psi_0,chis):
         psi_0 = copy.deepcopy(psi_0)
         update_table = {}
-        dt = self.tlist_long[1] - self.tlist_long[0]
         state_size = psi_0[0].size
         for i in range(self.n_states):
             chis[i] = np.reshape(chis[i],(state_size))
@@ -214,6 +237,10 @@ class Propagation:
     def propagate(self,backwards=False,store_states = False,update=False,chis_t=None,prop_options: dict = {}):
         if 'initial_states' in prop_options.keys():psi_0 = copy.deepcopy(prop_options['initial_states'])
         else:psi_0 = copy.deepcopy(self.initial_states)
+        if 'h' in prop_options.keys():
+            h = prop_options['h']
+            graduates = []
+        else:h = 0
         dt = self.tlist_long[1] - self.tlist_long[0]
         prop_tlist = copy.deepcopy(self.tlist_long)
         if backwards:prop_tlist = np.flip(prop_tlist,0)
@@ -222,8 +249,8 @@ class Propagation:
             new_controls = {}
             for H_i in self.Hamiltonian:
                 if isinstance(H_i,list):
-                    new_controls[H_i[1]] = np.zeros(len(prop_tlist)) # [0] * len(prop_tlist)
-            ga_int = np.zeros(len(self.pulse_options)) #[0 for _ in range(len(self.pulse_options))]
+                    new_controls[H_i[1]] = np.zeros(len(prop_tlist))
+            ga_int = np.zeros(len(self.pulse_options))
         for i in range(len(prop_tlist)):
             t = prop_tlist[i]
             if update:
@@ -233,14 +260,77 @@ class Propagation:
                 for H_i in self.Hamiltonian:
                     if isinstance(H_i,list):
                         new_controls[H_i[1]][i] = update_return[H_i[1]]
-            else:psi_0 = self.propagate_sg(dt,t,psi_0,backwards=backwards)
+            else:
+                if h:
+                    psi_0,grad = self.propagate_sg(dt,t,psi_0,backwards=backwards,h=h,chis_t=chis_t[i])
+                    graduates.append(grad)
+                else:psi_0 = self.propagate_sg(dt,t,psi_0,backwards=backwards,h=h)
             if store_states:psi_t.append(psi_0)
         if update:
             ga_int = sum(ga_int)/len(ga_int)
             return psi_0,new_controls,ga_int
         else:
-            if store_states:return psi_t
-            else:return psi_0
+            if h:
+                graduates.reverse()
+                graduates = np.array(graduates).T
+                graduates = np.reshape(graduates,graduates.shape[0] * graduates.shape[1])
+                if store_states:
+                    return psi_t,graduates
+                else:return psi_0,graduates
+            else:
+                if store_states:return psi_t
+                else:return psi_0
+
+    def array_like_control(self,x):
+        num_correct_points = 0
+        nt = self.tlist[-1] - 1
+        for key in self.pulse_options.keys():
+            if self.pulse_options[key]['oct_lambda_a']:
+                num_correct_points += nt
+        assert len(x) == num_correct_points
+        array2pulse_options = copy.deepcopy(self.pulse_options)
+        x = np.reshape(x,(int(len(x)/nt),nt))
+        x_i = 0
+        for H_i in self.Hamiltonian:
+            if isinstance(H_i,list):
+                if array2pulse_options[H_i[1]]['oct_lambda_a']:
+                    array2pulse_options[H_i[1]]['args']["fit_func"] =  interp1d(
+                    self.tlist_long, x[x_i], kind="cubic", fill_value="extrapolate")
+                    x_i += 1
+        return array2pulse_options
+
+    def control2array(self):
+        num_correct_points = 0
+        nt = self.tlist[-1] - 1
+        for key in self.pulse_options.keys():
+            if self.pulse_options[key]['oct_lambda_a']:
+                num_correct_points += nt
+        control_array = np.zeros(num_correct_points)
+        x_i = 0
+        for H_i in self.Hamiltonian:
+            if isinstance(H_i,list):
+                if self.pulse_options[H_i[1]]['oct_lambda_a']:
+                    control_array[x_i*nt:(x_i+1)*nt] = self.pulse_options[H_i[1]]['args']["fit_func"](self.tlist_long)
+                    x_i += 1
+        return control_array
+
+    def array_bounds(self):
+        num_correct_points = 0
+        nt = self.tlist[-1] - 1
+        for key in self.pulse_options.keys():
+            if self.pulse_options[key]['oct_lambda_a']:
+                num_correct_points += nt
+        ub = np.zeros(num_correct_points)
+        lb = np.zeros(num_correct_points)
+        x_i = 0
+        for H_i in self.Hamiltonian:
+            if isinstance(H_i,list):
+                if self.pulse_options[H_i[1]]['oct_lambda_a']:
+                    ub[x_i*nt:(x_i+1)*nt] = self.pulse_options[H_i[1]]['oct_pulse_max'] * self.pulse_options[H_i[1]]['update_shape'](self.tlist_long)
+                    lb[x_i*nt:(x_i+1)*nt] = self.pulse_options[H_i[1]]['oct_pulse_min'] * self.pulse_options[H_i[1]]['update_shape'](self.tlist_long)
+                    x_i += 1
+        bounds = [(lbi,ubi) for lbi,ubi in zip(lb,ub)]
+        return bounds
 
     def update_control(self,new_controls):
         for H_i in self.Hamiltonian:
@@ -338,7 +428,7 @@ class Optimization:
         self.target_states = None
         self.observables = None
         self.stored_controls = []
-        self.initial_controls = []
+        self.initial_controls = None
 
     def set_target_states(self,target_states):
         self.target_states = target_states
@@ -359,10 +449,14 @@ class Optimization:
         initial_controls = {}
         for Hi in self.prop.Hamiltonian:
             if isinstance(Hi,list):
-                initial_controls[Hi[1]] = self.prop.pulse_options[Hi[1]]['args']
+                initial_controls[Hi[1]] = self.prop.pulse_options[Hi[1]]['args']['fit_func'](self.prop.tlist_long)
         self.initial_controls = initial_controls
 
     def update_control(self,new_controls,store_key = False):
+        '''
+        storkey_key == 'last': only store the last two control scheme updated
+                    == 'last': store all updated control scheme
+        '''
         if store_key == 'all':
             if len(self.stored_controls) == 0:
                 controls_0 = self.prop.obtain_pulse()
@@ -378,8 +472,10 @@ class Optimization:
         self.prop.update_control(new_controls)
 
     def plot_sotred_pulses(self,fig_name=None):
-        alphas = np.linspace(0.1,1,len(self.stored_controls))
         colors = ['r','g','b','c','m','y']
+        if self.initial_controls:
+            self.stored_controls = [self.initial_controls] + self.stored_controls            
+        alphas = np.linspace(0.2,1,len(self.stored_controls))
         for i in range(len(self.stored_controls)):
             pulse_count = 0
             for H_i in self.prop.Hamiltonian:
@@ -450,7 +546,7 @@ class Optimization:
                 with open(runfolder+f'psi_{i}_final_after_oct.dat','w') as state_f:
                     state_f.write(state_text)
 
-    def Krotov_optimization(self,func_num = 0,runfolder = None, monotonic = False):
+    def Krotov_optimization(self,runfolder = None, monotonic = False):
         if runfolder:
             self.config(runfolder)
         self.store_initial_controls()
@@ -459,21 +555,24 @@ class Optimization:
         psi_T = self.prop.propagate()
         psi_T_last_step = copy.deepcopy(psi_T)
         tac = time.time()
-        if func_num == 0:
-            JT_0 = [J_T_local.JT_ss(psi_T,self.target_states)]
-            n_JT = 1
-            JT_name = None
-        if func_num == 1:
-            JT_0 = self.F_PE(psi_T)
-            n_JT = 3
-            JT_name = ['JT','gate_conc','delta_U']
-        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,n_JT,JT_name,0)
+        #if func_num == 0:
+            #JT_0 = [J_T_local.JT_ss(psi_T,self.target_states)]
+            #n_JT = 1
+            #JT_name = None
+        #if func_num == 1:
+            #JT_0 = self.F_PE(psi_T)
+            #n_JT = 3
+            #JT_name = ['JT','gate_conc','delta_U']
+        JT_0 = self.JT(psi_T)
+        if not isinstance(JT_0,list):JT_0 = [JT_0]
+        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,self.n_JT,self.JT_name,0)
         iter_log.log_iter_info(0,JT_0,tac-tic,0,0)
         JT_iter.append(JT_0[0])
         ga_bound = 10000
         for iters in range(1,self.oct_info['iter_stop'] + 1):
-            if func_num == 0 :chis_T = J_T_local.chis_ss(psi_T,self.target_states)
-            if func_num == 1:chis_T = self.chis_PE(psi_T)
+            #if func_num == 0 :chis_T = J_T_local.chis_ss(psi_T,self.target_states)
+            #if func_num == 1:chis_T = self.chis_PE(psi_T)
+            chis_T = self.chis(psi_T)
             tic = time.time()
             chis_t = self.prop.propagate(True,True,False,prop_options={'initial_states':chis_T})
             chis_t.reverse()
@@ -489,8 +588,10 @@ class Optimization:
                 #psi_T = psi_T_last_step
                 #break
             psi_T_last_step = copy.deepcopy(psi_T)
-            if func_num == 0:JT_new = [J_T_local.JT_ss(psi_T,self.target_states)]
-            if func_num == 1:JT_new = self.F_PE(psi_T)
+            #if func_num == 0:JT_new = [J_T_local.JT_ss(psi_T,self.target_states)]
+            #if func_num == 1:JT_new = self.F_PE(psi_T)
+            JT_new = self.JT(psi_T)
+            if not isinstance(JT_new,list):JT_new = [JT_new]
             if all([JT_new[0] > JT_iter[-1] and monotonic]) or ga_int > ga_bound:
                 iter_log.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound)
                 psi_T = copy.deepcopy(psi_T_last_step)
@@ -500,7 +601,8 @@ class Optimization:
                 iter_log.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],ga_int)
                 JT_iter.append(JT_new[0])
                 self.update_control(new_controls,'last')
-                self.store_result(runfolder,psi_T)
+                #self.update_control(new_controls,'all')
+                if runfolder:self.store_result(runfolder,psi_T)
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
                     iter_log.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
@@ -546,37 +648,30 @@ class Optimization:
                     ga.append(0)
         return new_pulses,sum(ga)/len(ga)
 
-    def GRAPE(self,func_num,runfolder = None, monotonic = False):
+    def GRAPE(self,runfolder = None, monotonic = False):
         if runfolder:
             self.config(runfolder)
         self.store_initial_controls()
         JT_iter = []
-        if func_num == 0:
-            n_JT = 1
-            JT_name = None
-        if func_num == 1:
-            n_JT = 3
-            JT_name = ['JT','gate_conc','delta_U']
-        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,n_JT,JT_name,1)
+        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,self.n_JT,self.JT_name,1)
         for iters in range(self.oct_info['iter_stop']):
             tic_0 = time.time()
             psi_t = self.prop.propagate(False,True)
             psi_T = psi_t[-1]
             tac_0 = time.time()
-            if func_num == 0:
-                JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
-            if func_num == 1:
-                JT_new = self.F_PE(psi_T)
+            #if func_num == 0:JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
+            #if func_num == 1:JT_new = self.F_PE(psi_T)
+            JT_new = self.JT(psi_T)
+            if not isinstance(JT_new,list):JT_new = [JT_new]
             if iters:
                 if JT_iter[-1] > JT_new[0] and monotonic:
                     iter_log.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound = 1e10)
                     self.prop.change_lambda_a(2)
                     JT_iter.append(JT_new[0])
             tic_1 = time.time()
-            if func_num == 0:
-                lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':self.target_states})
-            if func_num == 1:
-                lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':self.chis_PE(psi_T)})
+            #if func_num == 0:lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':self.target_states})
+            #if func_num == 1:lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':self.chis_PE(psi_T)})
+            lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':self.chis(psi_T)})
             new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.prop.Hamiltonian,self.prop.tlist_long,self.prop.n_states,self.prop.pulse_options)
             tac_1 = time.time()
             self.update_control(new_pulses,'last')
@@ -594,15 +689,62 @@ class Optimization:
             tic = time.time()
             psi_T = self.prop.propagate(False,False)
             tac = time.time()
-            if func_num == 0:
-                JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
-            if func_num == 1:
-                JT_new = self.F_PE(psi_T)
-            iter_log.log_iter_info(0,JT_new,tac-tic,JT_iter[-1],0)
+            #if func_num == 0:JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
+            #if func_num == 1:JT_new = self.F_PE(psi_T)
+            JT_new = self.JT(psi_T)
+            if not isinstance(JT_new,list):JT_new = [JT_new]
+            iter_log.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],0)
             JT_iter.append(JT_new[0])
         if runfolder:
             self.store_result(runfolder,psi_T)
         return JT_iter,psi_T
-    
-    def GRAPE_BFGS(self,target_states,runfolder = None, monotonic = False):
+
+    def GRAPE_Grad(self,x):
+        return 0
+
+    def GRAPE_BFGS(self):
+        import datetime
+        def func(x,*args):
+            self.prop.pulse_options = self.prop.array_like_control(x)
+            #plt.plot(x)
+            #plt.show()
+            psi_t = self.prop.propagate(store_states=True)
+            lambda_T = self.chis(psi_t[-1])
+            #lambda_t,grad = self.prop.propagate(True,True,chis_t=psi_t,prop_options={'initial_states':lambda_T,'h':1e-7})
+            lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':lambda_T})
+            grad = fprime(psi_t,lambda_t)
+            JT_eval = self.JT(psi_t[-1])
+            print(JT_eval)
+            return JT_eval,grad
+        def fprime(psi_t,lambda_t,*args):
+            psi_t = copy.deepcopy(psi_t)
+            lambda_t = copy.deepcopy(lambda_t)
+            lambda_t.reverse()
+            state_size = psi_t[0][0].size
+            h = 1e-6
+            grad = []
+            update_table = {}
+            for i in range(len(self.prop.Hamiltonian)):
+                if isinstance(self.prop.Hamiltonian[i],list):
+                    update_table[self.prop.Hamiltonian[i][1]] = 0
+            for H_i in self.prop.Hamiltonian:
+                if isinstance(H_i,list):
+                    pulse_i = H_i[1]
+                    if self.prop.pulse_options[pulse_i]['oct_lambda_a']:
+                        for i in range(self.prop.tlist[-1] - 1):
+                            update_table[pulse_i] = h
+                            Hip = H_t(self.prop.Hamiltonian,self.prop.tlist_long[i],self.prop.pulse_options,update_table)
+                            update_table[pulse_i] = 0
+                            Him = H_t(self.prop.Hamiltonian,self.prop.tlist_long[i],self.prop.pulse_options)
+                            #update_table[pulse_i] = 0
+                            grad_H = (Hip-Him)/h
+                            grad_i = 0.
+                            for j in range(self.prop.n_states):
+                                Hi_psi = grad_H.dot(psi_t[i][j])
+                                grad_i -= np.imag(np.inner(np.conjugate(np.reshape(lambda_t[i+1][j],(state_size))),np.reshape(Hi_psi,(state_size))))
+                            grad.append(grad_i)
+            return grad
+        x0 = self.prop.control2array()
+        bounds = self.prop.array_bounds()
+        opt_res = fmin_l_bfgs_b(func,x0,bounds = bounds,maxfun=5,callback=None)
         return 0

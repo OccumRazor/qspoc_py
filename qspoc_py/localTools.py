@@ -19,6 +19,49 @@ def read_oct_iters(working_folder,delta_JT = False):
     if delta_JT:return [this_JTS[-1],(this_JTS[-2]-this_JTS[-1])/this_JTS[-1]]
     return this_JTS[-1]
 
+def sin_sq(t,T,t_rise,rise):
+    omega = np.pi / 2 / t_rise
+    if rise:
+        return np.sin(omega * t) ** 2
+    else:
+        return np.sin(omega * (T - t)) ** 2
+
+def flattop_pulse(T,t_rise,t_fall):
+    def calculate_output(t_val):
+        if isinstance(t_val, np.ndarray):
+            mask_rise_region = t_val < t_rise
+            mask_fall_region = t_val > (T - t_fall)
+            mask_constant_region = ~(mask_rise_region | mask_fall_region)
+            output_array = np.empty_like(t_val, dtype=t_val.dtype if t_val.dtype == float else np.float64) # Ensure float output for sin
+            if np.any(mask_rise_region):
+                output_array[mask_rise_region] = sin_sq(t_val[mask_rise_region], T, t_rise, True)
+            if np.any(mask_fall_region):
+                output_array[mask_fall_region] = sin_sq(t_val[mask_fall_region], T, t_fall, False)
+            if np.any(mask_constant_region):
+                output_array[mask_constant_region] = np.full(
+                    np.sum(mask_constant_region),
+                    1,
+                    dtype=output_array.dtype)
+            return output_array
+        elif isinstance(t_val, (int, float)):
+            if t_rise < t_val < T - t_fall:
+                return type(t_val)(1)
+            elif t_val < t_rise:
+                return sin_sq(t_val,T,t_rise,True)
+            else:
+                return sin_sq(t_val,T,t_fall,False)
+        else:
+            # Fallback for other types, return a generic constant or raise an error
+            # For this problem, we assume t is numeric (int, float, or np.ndarray)
+            raise TypeError("Unsupported type for t. Must be a number or a numpy array.")
+    return lambda t:calculate_output(t)
+    #return {'fit_func':lambda t:calculate_output(t)}
+
+def flattop(t, t_start, t_stop, t_rise, t_fall):
+    func_obj = flattop_pulse(t_stop,t_rise,t_fall)
+    return func_obj(t)
+
+'''
 def flattop(t, t_start, t_stop, t_rise, t_fall):
     if t_start <= t <= t_stop:
         f = 1.0
@@ -29,6 +72,7 @@ def flattop(t, t_start, t_stop, t_rise, t_fall):
         return f
     else:
         return 0.0
+'''
 
 def box(t, t_start, t_stop):
     if t < t_start:
