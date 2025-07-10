@@ -170,36 +170,12 @@ class Propagation:
                 control_i_update_amp -= pulse_i_t - self.pulse_options[pulse_i]['oct_pulse_min']
         return control_i_update_amp
 
-    def propagate_sg(self,dt,t,psi_0,backwards=False,h=0,chis_t=None):
+    def propagate_sg(self,dt,t,psi_0,backwards=False):
         psi_0 = copy.deepcopy(psi_0)
         Ht = H_t(self.Hamiltonian,t,self.pulse_options)
-        if h:
-            state_size = psi_0[0].size
-            grad = []
-            update_table = {}
-            for k in range(len(self.Hamiltonian)):
-                if isinstance(self.Hamiltonian[k],list):
-                    update_table[self.Hamiltonian[k][1]] = 0
-            for k in range(len(self.Hamiltonian)):
-                if isinstance(self.Hamiltonian[k],list):
-                    pulse_k = self.Hamiltonian[k][1]
-                    oct_lambda_a_k = self.pulse_options[pulse_k]['oct_lambda_a']
-                    if oct_lambda_a_k:
-                        update_table[pulse_k] = h
-                        Hkp = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
-                        update_table[pulse_k] = -h
-                        Hkm = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
-                        update_table[pulse_k] = 0
-                        grad_H = (Hkp-Hkm)/h
-                        grad_i = 0.
-                        for i in range(self.n_states):
-                            Hk_psi = grad_H.dot(chis_t[i])
-                            grad_i -= np.real(np.inner(np.conjugate(np.reshape(psi_0[i],(state_size))),np.reshape(Hk_psi,(state_size))))
-                        grad.append(grad_i)
         for i in range(self.n_states):
             psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
-        if h:return psi_0,grad
-        else:return psi_0
+        return psi_0
 
     def propagate_sg_update(self,dt,t,psi_0,chis):
         psi_0 = copy.deepcopy(psi_0)
@@ -237,10 +213,6 @@ class Propagation:
     def propagate(self,backwards=False,store_states = False,update=False,chis_t=None,prop_options: dict = {}):
         if 'initial_states' in prop_options.keys():psi_0 = copy.deepcopy(prop_options['initial_states'])
         else:psi_0 = copy.deepcopy(self.initial_states)
-        if 'h' in prop_options.keys():
-            h = prop_options['h']
-            graduates = []
-        else:h = 0
         dt = self.tlist_long[1] - self.tlist_long[0]
         prop_tlist = copy.deepcopy(self.tlist_long)
         if backwards:prop_tlist = np.flip(prop_tlist,0)
@@ -260,26 +232,14 @@ class Propagation:
                 for H_i in self.Hamiltonian:
                     if isinstance(H_i,list):
                         new_controls[H_i[1]][i] = update_return[H_i[1]]
-            else:
-                if h:
-                    psi_0,grad = self.propagate_sg(dt,t,psi_0,backwards=backwards,h=h,chis_t=chis_t[i])
-                    graduates.append(grad)
-                else:psi_0 = self.propagate_sg(dt,t,psi_0,backwards=backwards,h=h)
+            else:psi_0 = self.propagate_sg(dt,t,psi_0,backwards=backwards)
             if store_states:psi_t.append(psi_0)
         if update:
             ga_int = sum(ga_int)/len(ga_int)
             return psi_0,new_controls,ga_int
         else:
-            if h:
-                graduates.reverse()
-                graduates = np.array(graduates).T
-                graduates = np.reshape(graduates,graduates.shape[0] * graduates.shape[1])
-                if store_states:
-                    return psi_t,graduates
-                else:return psi_0,graduates
-            else:
-                if store_states:return psi_t
-                else:return psi_0
+            if store_states:return psi_t
+            else:return psi_0
 
     def array_like_control(self,x):
         num_correct_points = 0
@@ -475,7 +435,7 @@ class Optimization:
         colors = ['r','g','b','c','m','y']
         if self.initial_controls:
             self.stored_controls = [self.initial_controls] + self.stored_controls            
-        alphas = np.linspace(0.2,1,len(self.stored_controls))
+        alphas = np.linspace(0.5,1,len(self.stored_controls))
         for i in range(len(self.stored_controls)):
             pulse_count = 0
             for H_i in self.prop.Hamiltonian:
@@ -703,11 +663,8 @@ class Optimization:
         return 0
 
     def GRAPE_BFGS(self):
-        import datetime
         def func(x,*args):
             self.prop.pulse_options = self.prop.array_like_control(x)
-            #plt.plot(x)
-            #plt.show()
             psi_t = self.prop.propagate(store_states=True)
             lambda_T = self.chis(psi_t[-1])
             #lambda_t,grad = self.prop.propagate(True,True,chis_t=psi_t,prop_options={'initial_states':lambda_T,'h':1e-7})
@@ -715,13 +672,17 @@ class Optimization:
             grad = fprime(psi_t,lambda_t)
             JT_eval = self.JT(psi_t[-1])
             print(JT_eval)
-            return JT_eval,grad
+            #plt.plot(x)
+            #plt.plot(np.real(grad))
+            #plt.show()
+            return JT_eval,np.real(grad)
         def fprime(psi_t,lambda_t,*args):
             psi_t = copy.deepcopy(psi_t)
             lambda_t = copy.deepcopy(lambda_t)
             lambda_t.reverse()
             state_size = psi_t[0][0].size
-            h = 1e-6
+            dt = self.prop.tlist_long[1] - self.prop.tlist_long[0]
+            h = 1e-7
             grad = []
             update_table = {}
             for i in range(len(self.prop.Hamiltonian)):
@@ -737,14 +698,17 @@ class Optimization:
                             update_table[pulse_i] = 0
                             Him = H_t(self.prop.Hamiltonian,self.prop.tlist_long[i],self.prop.pulse_options)
                             #update_table[pulse_i] = 0
-                            grad_H = (Hip-Him)/h
+                            grad_H = (Hip-Him) / h
+                            grad_H = Him
+                            #grad_H = H_t(self.prop.Hamiltonian,self.prop.tlist_long[i],self.prop.pulse_options)
                             grad_i = 0.
                             for j in range(self.prop.n_states):
-                                Hi_psi = grad_H.dot(psi_t[i][j])
-                                grad_i -= np.imag(np.inner(np.conjugate(np.reshape(lambda_t[i+1][j],(state_size))),np.reshape(Hi_psi,(state_size))))
+                                #Hi_psi = grad_H.dot(psi_t[i][j])
+                                Hi_psi = propagation_method.Chebyshev(Hip,psi_t[i][j],self.prop.E_max,self.prop.E_min,dt) - psi_t[i+1][j]
+                                grad_i -= 1/h *  np.real(np.inner(np.conjugate(np.reshape(lambda_t[i][j],(state_size))),np.reshape(Hi_psi,(state_size))))
                             grad.append(grad_i)
             return grad
         x0 = self.prop.control2array()
         bounds = self.prop.array_bounds()
-        opt_res = fmin_l_bfgs_b(func,x0,bounds = bounds,maxfun=5,callback=None)
+        opt_res = fmin_l_bfgs_b(func,x0,bounds = bounds,maxfun=15,callback=None)
         return 0
