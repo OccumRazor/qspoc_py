@@ -1,3 +1,6 @@
+import time,numpy as np
+from pathlib import Path
+
 class Iter_info:
     def __init__(self,iter_stop,runfolder=None,n_JT=1,JT_names=None,direction=1):
         '''
@@ -58,4 +61,33 @@ class Iter_info:
             message = f'# stop condition met (JT < {JT_conv}: {JT_new[0] < JT_conv}, dJT < {dJT_conv}: {dJT < dJT_conv}), break'
         if self.runfolder:self.out_stream.write(message+'\n')
         else:print(message)
-    
+
+
+class Monitor:
+    def __init__(self,func,x0,iter_stop,runfolder,n_JT,JT_name):
+        self.last_control = x0
+        self.func = func
+        self.JT_iter = []
+        self.iters = 0
+        self.t_log = [0]
+        path_Path = Path(runfolder)
+        path_Path.mkdir(exist_ok=True,parents=True)
+        self.iter_log = Iter_info(iter_stop,runfolder,n_JT,JT_name,0)
+
+    def time_stamp(self):
+        self.t_log.append(time.time())
+
+    def cost_function(self,x):
+        JT_new,grad = self.func(x)
+        if self.iters:dt = self.t_log[-1] - self.t_log[-2]
+        else:dt = 0
+        ga_int = sum(np.abs(x-self.last_control))
+        if len(self.JT_iter):self.iter_log.log_iter_info(self.iters,JT_new,dt,JT_last=self.JT_iter[-1],ga_int=ga_int)
+        else:self.iter_log.log_iter_info(self.iters,JT_new,dt,ga_int=ga_int)
+        self.JT_iter.append(JT_new[0])
+        self.iters += 1
+        if isinstance(JT_new,list):return JT_new[0],grad
+        else:return JT_new,grad
+
+    def callback(self,x):
+        self.t_log.append(time.time())
