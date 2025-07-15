@@ -69,26 +69,31 @@ class Monitor:
         self.func = func
         self.JT_iter = []
         self.iters = 0
-        self.t_log = [0]
+        self.t_log = [time.time()]
         path_Path = Path(runfolder)
         path_Path.mkdir(exist_ok=True,parents=True)
         self.iter_log = Iter_info(iter_stop,runfolder,n_JT,JT_name,0)
+        self.JT_new = None
+        self.initial_run()
 
-    def time_stamp(self):
+    def initial_run(self):
+        self.JT_new,grad = self.func(self.last_control)
+        self.JT_iter.append(self.JT_new[0])
         self.t_log.append(time.time())
+        dt = self.t_log[-1] - self.t_log[-2]
+        self.iter_log.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
+        self.iters += 1
 
     def cost_function(self,x):
-        JT_new,grad = self.func(x)
-        if self.iters:dt = self.t_log[-1] - self.t_log[-2]
-        else:dt = 0
-        ga_int = sum(np.abs(x-self.last_control))
-        if len(self.JT_iter):self.iter_log.log_iter_info(self.iters,JT_new,dt,JT_last=self.JT_iter[-1],ga_int=ga_int)
-        else:self.iter_log.log_iter_info(self.iters,JT_new,dt,ga_int=ga_int)
-        self.JT_iter.append(JT_new[0])
-        self.iters += 1
-        if isinstance(JT_new,list):return JT_new[0],grad
-        else:return JT_new,grad
+        self.JT_new,grad = self.func(x)
+        if isinstance(self.JT_new,list):return self.JT_new,grad
+        else:return self.JT_new,grad
 
     def callback(self,x):
+        ga_int = sum(np.abs(x-self.last_control))
         self.last_control = x
         self.t_log.append(time.time())
+        dt = self.t_log[-1] - self.t_log[-2]
+        self.iter_log.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1],ga_int=ga_int)
+        self.JT_iter.append(self.JT_new[0])
+        self.iters += 1

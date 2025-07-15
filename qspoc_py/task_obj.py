@@ -717,14 +717,12 @@ class Optimization:
 
     def GRAPE_BFGS(self,runfolder):
         def func(x,*args):
-            scipy_monitor.time_stamp()
             self.prop.pulse_options = self.prop.array_like_control(x)
             psi_t = self.prop.propagate(store_states=True)
             lambda_T = self.chis(psi_t[-1])
             #lambda_t,grad = self.prop.propagate(True,True,chis_t=psi_t,prop_options={'initial_states':lambda_T,'h':1e-7})
             lambda_t = self.prop.propagate(True,True,prop_options={'initial_states':lambda_T})
             grad = self.GRAPE_Grad(psi_t,lambda_t)
-            scipy_monitor.time_stamp()
             JT_eval = self.JT(psi_t[-1])
             if not isinstance(JT_eval,list):JT_eval = [JT_eval]
             #plt.plot(x)
