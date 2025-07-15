@@ -731,6 +731,8 @@ class Optimization:
             #plt.plot(np.real(grad))
             #plt.show()
             return JT_eval,np.real(grad)
+        if runfolder:
+            self.config(runfolder)
         self.store_initial_controls()
         x0 = self.prop.control2array()
         scipy_monitor = iter_info_manager.Monitor(func,x0,self.oct_info['iter_stop'],runfolder,self.n_JT,self.JT_name)

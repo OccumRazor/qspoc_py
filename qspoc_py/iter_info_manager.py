@@ -90,4 +90,5 @@ class Monitor:
         else:return JT_new,grad
 
     def callback(self,x):
+        self.last_control = x
         self.t_log.append(time.time())
