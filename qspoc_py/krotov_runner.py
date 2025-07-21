@@ -26,11 +26,11 @@ def Krotov_config_runfolder(runfolder,tlist):
 
 def Krotov_run(runfolder):
     opt_obj,config = config_task.config_opt(runfolder)
-    psi_f = opt_obj.prop.propagate()
+    psi_f = opt_obj.propagate()
     print(J_T_local.inFidelity(psi_f[0],opt_obj.target_states[0]))
     opt_result = opt_obj.Krotov_run(runfolder,'inFidelity')
-    opt_obj.prop.update_control(opt_result.optimized_controls)
-    psi_f = opt_obj.prop.propagate()
+    opt_obj.update_control(opt_result.optimized_controls)
+    psi_f = opt_obj.propagate()
     print(J_T_local.inFidelity(psi_f[0],opt_obj.target_states[0]))
 
 def Krotov_call(num_qubit,T,canoLabel,JT,control_source = None, header = None):
@@ -84,10 +84,10 @@ Krotov_call(4,T,canoLabel,0)
 #Krotov_call(4,T,canoLabel,0,f'control_source/{T}/','pulse_oct')
 
 #opt_obj.config('control_source/rf112/')
-#print(opt_obj.prop.tlist_long)
-#print(opt_obj.prop.tlist)
+#print(opt_obj.tlist_long)
+#print(opt_obj.tlist)
 #opt_obj.Krotov_run('control_source/rf112/','inFidelity')
-#psi_f = opt_obj.prop.propagate()
+#psi_f = opt_obj.propagate()
 #print(psi_f)
 #print(J_T_local.inFidelity(psi_f[0],opt_obj.target_states[0]))
 #opt_result=Krotov_call(num_qubit,T,'0+',0,'control_source/21.0/','pulse_initial')

@@ -75,8 +75,8 @@ def qdyn_opt(
     opt_obj: task_obj.Optimization,
     runfolder,
 ):
-    if len(opt_obj.prop.tlist) == 3:qdyn_tlist = opt_obj.prop.tlist[1:]
-    else:qdyn_tlist = opt_obj.prop.tlist# tuple of the form (T, Nt)
+    if len(opt_obj.tlist) == 3:qdyn_tlist = opt_obj.tlist[1:]
+    else:qdyn_tlist = opt_obj.tlist# tuple of the form (T, Nt)
     dt = (qdyn_tlist[0]) / (qdyn_tlist[1] - 1)
     tgrid = np.linspace(
         float(dt / 2),
@@ -85,13 +85,13 @@ def qdyn_opt(
         dtype=np.float64,
     )  #! here the default is np.float 64, it has been changed manually, also in QDYN python package
     # Initialize model
-    model = addHam2model(opt_obj.prop.Hamiltonian,opt_obj.prop.pulse_options,tgrid)
-    for i in range(opt_obj.prop.n_states):
-        if opt_obj.prop.n_states == 1:
-            model.add_state(qutip.Qobj(opt_obj.prop.initial_states[i]), f"initial")
+    model = addHam2model(opt_obj.Hamiltonian,opt_obj.pulse_options,tgrid)
+    for i in range(opt_obj.n_states):
+        if opt_obj.n_states == 1:
+            model.add_state(qutip.Qobj(opt_obj.initial_states[i]), f"initial")
             model.add_state(qutip.Qobj(opt_obj.target_states[i]), f"final")
         else:
-            model.add_state(qutip.Qobj(opt_obj.prop.initial_states[i]), f"initial_{i}")
+            model.add_state(qutip.Qobj(opt_obj.initial_states[i]), f"initial_{i}")
             model.add_state(qutip.Qobj(opt_obj.target_states[i]), f"final_{i}")
     obj_path = Path(runfolder)
     obj_path.mkdir(parents=True, exist_ok=True)
