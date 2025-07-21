@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from . import read_write
 
 class Iter_info:
-    def __init__(self,iter_stop,runfolder=None,n_JT=1,JT_names=None,direction=1):
+    def __init__(self,iter_stop,runfolder=None,n_JT=1,JT_names=None,direction=0):
         '''
         iter_stop: int specify number of iterations, required for the purpose of alignment.\n
         runfolder: upon input, iter info will be written into runfolder/oct_iters.dat, otherwise printed to terminal.\n
@@ -70,6 +70,15 @@ class Iter_info:
 
 @dataclass
 class Opt_result_options:
+    '''
+    store_psi_T_iter:\n
+        if True, store psi_T of each iteration, instead of the last one.\n
+    sotre_intermideate_state:\n
+        if True, store pst_t instead of just pst_T\n
+    store_former_control_key:\n
+        last: only store the controls from the last two iterations. Initial control is not controled by this key.\n
+        all: store all controls.\n
+    '''
     store_psi_T_iter:bool
     sotre_intermideate_state:bool
     store_former_control_key:str

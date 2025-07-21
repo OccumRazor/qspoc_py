@@ -534,7 +534,7 @@ class Optimization(Propagation):
     def GRAPE(self,runfolder = None, monotonic = False):
         if runfolder:
             self.config_opt(runfolder)
-        opt_result_options = iter_info_manager.Opt_result_options(False,False,'all')
+        opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
         opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,0)
         opt_result.store_initial_controls()
         JT_iter = []
@@ -544,37 +544,35 @@ class Optimization(Propagation):
             psi_T = psi_t[-1]
             tac_0 = time.time()
             JT_new = self.JT(psi_T)
+            if not isinstance(JT_new,list):JT_new = [JT_new]
             if iters == 0:
                 opt_result.log_iter_info(0,JT_new,tac_0-tic_0,0,0)
             else:
-                opt_result.log_iter_info(iters,JT_new,tac_1-tic_0,JT_iter[-1],ga_int)
+                opt_result.log_iter_info(iters,JT_new,tac_0-tic_1,JT_iter[-1],ga_int)
             opt_result.store_psi_T(psi_T)
-            if not isinstance(JT_new,list):JT_new = [JT_new]
             if iters:
                 if JT_iter[-1] > JT_new[0] and monotonic:
                     opt_result.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound = 1e10)
                     self.change_lambda_a(2)
                     JT_iter.append(JT_new[0])
+            tic_1 = time.time()
             lambda_t = self.propagate(True,True,prop_options={'initial_states':self.chis(psi_T)})
             new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.Hamiltonian,self.tlist_long,self.n_states,self.pulse_options)
-            tac_1 = time.time()
             self.update_control(new_pulses)
             opt_result.store_control(new_pulses)
             JT_iter.append(JT_new[0])
             if iters:
-                if JT_iter[-1] > self.oct_info['JT_conv'] or np.abs(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
+                if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
                     opt_result.log_stop_info(JT_new,self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
-        if iters == self.oct_info['iter_stop'] - 1:
-            iters += 1
-            tic = time.time()
-            psi_T = self.propagate(False,False)
-            tac = time.time()
-            opt_result.store_psi_T(psi_T)
-            JT_new = self.JT(psi_T)
-            if not isinstance(JT_new,list):JT_new = [JT_new]
-            opt_result.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],0)
-            JT_iter.append(JT_new[0])
+        iters += 1
+        psi_T = self.propagate(False,False)
+        tac_2 = time.time()
+        opt_result.store_psi_T(psi_T)
+        JT_new = self.JT(psi_T)
+        if not isinstance(JT_new,list):JT_new = [JT_new]
+        opt_result.log_iter_info(iters,JT_new,tac_2-tic_1,JT_iter[-1],ga_int)
+        JT_iter.append(JT_new[0])
         return opt_result
 
     def GRAPE_Grad(self,psi_t,lambda_t):
