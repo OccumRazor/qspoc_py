@@ -1,4 +1,4 @@
-import random, os, numpy as np,time,scipy
+import random, os, numpy as np,time,scipy,copy
 from scipy.interpolate import interp1d
 from . import read_write
 
@@ -278,8 +278,82 @@ def random_guess_cos(t, control_args):
     frequency = control_args.get("freqX")
     return fit_func(t) * np.cos(frequency * t) * 2
 
-def Hamiltonian(num_qubit=3, **kwargs):
-    H0, Hc = Hamiltonian_Spin_Chain(num_qubit, **kwargs)
-    return [qutip.Qobj(H0)] + [[qutip.Qobj(Hc[i]),lambda t,args:random_guess(t,args)] for i in range(len(Hc))]
+def array_like_control(x,tlist,pulse_options,Hamiltonian,tlist_long):
+    '''
+    This function is supposed to be depleted, call new_controls = array2control(), \n
+    and then update_control(new_controls) in the future
+    '''
+    num_correct_points = 0
+    nt = tlist[-1] - 1
+    for key in pulse_options.keys():
+        if pulse_options[key]['oct_lambda_a']:
+            num_correct_points += nt
+    assert len(x) == num_correct_points
+    array2pulse_options = copy.deepcopy(pulse_options)
+    x = np.reshape(x,(int(len(x)/nt),nt))
+    x_i = 0
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            if array2pulse_options[H_i[1]]['oct_lambda_a']:
+                array2pulse_options[H_i[1]]['args']["fit_func"] =  interp1d(
+                tlist_long, x[x_i], kind="cubic", fill_value="extrapolate")
+                x_i += 1
+    return array2pulse_options
+
+def array2control(x,tlist,pulse_options,Hamiltonian,tlist_long):
+    num_correct_points = 0
+    nt = tlist[-1] - 1
+    for key in pulse_options.keys():
+        if pulse_options[key]['oct_lambda_a']:
+            num_correct_points += nt
+    assert len(x) == num_correct_points
+    x = np.reshape(x,(int(len(x)/nt),nt))
+    x_i = 0
+    new_controls = {}
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            new_controls[H_i[1]] = np.zeros(nt)
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            if pulse_options[H_i[1]]['oct_lambda_a']:
+                for i in range(nt):
+                    new_controls[H_i[1]][i]=x[x_i][i]
+                x_i += 1
+            else:
+                new_controls[H_i][1] = pulse_options[H_i[1]]['args']["fit_func"](tlist_long)
+    return new_controls
+
+def control2array(tlist,pulse_options,Hamiltonian,tlist_long):
+    num_correct_points = 0
+    nt = tlist[-1] - 1
+    for key in pulse_options.keys():
+        if pulse_options[key]['oct_lambda_a']:
+            num_correct_points += nt
+    control_array = np.zeros(num_correct_points)
+    x_i = 0
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            if pulse_options[H_i[1]]['oct_lambda_a']:
+                control_array[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['args']["fit_func"](tlist_long)
+                x_i += 1
+    return control_array
+
+def array_bounds(tlist,pulse_options,Hamiltonian,tlist_long):
+    num_correct_points = 0
+    nt = tlist[-1] - 1
+    for key in pulse_options.keys():
+        if pulse_options[key]['oct_lambda_a']:
+            num_correct_points += nt
+    ub = np.zeros(num_correct_points)
+    lb = np.zeros(num_correct_points)
+    x_i = 0
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            if pulse_options[H_i[1]]['oct_lambda_a']:
+                ub[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_max'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
+                lb[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_min'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
+                x_i += 1
+    bounds = [(lbi,ubi) for lbi,ubi in zip(lb,ub)]
+    return bounds
 
 

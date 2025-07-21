@@ -241,57 +241,6 @@ class Propagation:
             if store_states:return psi_t
             else:return psi_0
 
-    def array_like_control(self,x):
-        num_correct_points = 0
-        nt = self.tlist[-1] - 1
-        for key in self.pulse_options.keys():
-            if self.pulse_options[key]['oct_lambda_a']:
-                num_correct_points += nt
-        assert len(x) == num_correct_points
-        array2pulse_options = copy.deepcopy(self.pulse_options)
-        x = np.reshape(x,(int(len(x)/nt),nt))
-        x_i = 0
-        for H_i in self.Hamiltonian:
-            if isinstance(H_i,list):
-                if array2pulse_options[H_i[1]]['oct_lambda_a']:
-                    array2pulse_options[H_i[1]]['args']["fit_func"] =  interp1d(
-                    self.tlist_long, x[x_i], kind="cubic", fill_value="extrapolate")
-                    x_i += 1
-        return array2pulse_options
-
-    def control2array(self):
-        num_correct_points = 0
-        nt = self.tlist[-1] - 1
-        for key in self.pulse_options.keys():
-            if self.pulse_options[key]['oct_lambda_a']:
-                num_correct_points += nt
-        control_array = np.zeros(num_correct_points)
-        x_i = 0
-        for H_i in self.Hamiltonian:
-            if isinstance(H_i,list):
-                if self.pulse_options[H_i[1]]['oct_lambda_a']:
-                    control_array[x_i*nt:(x_i+1)*nt] = self.pulse_options[H_i[1]]['args']["fit_func"](self.tlist_long)
-                    x_i += 1
-        return control_array
-
-    def array_bounds(self):
-        num_correct_points = 0
-        nt = self.tlist[-1] - 1
-        for key in self.pulse_options.keys():
-            if self.pulse_options[key]['oct_lambda_a']:
-                num_correct_points += nt
-        ub = np.zeros(num_correct_points)
-        lb = np.zeros(num_correct_points)
-        x_i = 0
-        for H_i in self.Hamiltonian:
-            if isinstance(H_i,list):
-                if self.pulse_options[H_i[1]]['oct_lambda_a']:
-                    ub[x_i*nt:(x_i+1)*nt] = self.pulse_options[H_i[1]]['oct_pulse_max'] * self.pulse_options[H_i[1]]['update_shape'](self.tlist_long)
-                    lb[x_i*nt:(x_i+1)*nt] = self.pulse_options[H_i[1]]['oct_pulse_min'] * self.pulse_options[H_i[1]]['update_shape'](self.tlist_long)
-                    x_i += 1
-        bounds = [(lbi,ubi) for lbi,ubi in zip(lb,ub)]
-        return bounds
-
     def update_control(self,new_controls):
         for H_i in self.Hamiltonian:
             if isinstance(H_i,list):
@@ -602,51 +551,32 @@ class Optimization(Propagation):
                         grad.append(grad_i)
         return grad
 
-    def store_array_like_control(self,x):
-        num_correct_points = 0
-        nt = self.tlist[-1] - 1
-        for key in self.pulse_options.keys():
-            if self.pulse_options[key]['oct_lambda_a']:
-                num_correct_points += nt
-        assert len(x) == num_correct_points
-        x = np.reshape(x,(int(len(x)/nt),nt))
-        x_i = 0
-        new_controls = {}
-        for H_i in self.Hamiltonian:
-            if isinstance(H_i,list):
-                new_controls[H_i[1]] = np.zeros(nt)
-        for H_i in self.Hamiltonian:
-            if isinstance(H_i,list):
-                if self.pulse_options[H_i[1]]['oct_lambda_a']:
-                    for i in range(nt):
-                        new_controls[H_i[1]][i]=x[x_i][i]
-                    x_i += 1
-                else:
-                    new_controls[H_i][1] = self.pulse_options[H_i[1]]['args']["fit_func"](self.tlist_long)
-        self.update_control(new_controls)
-
     def GRAPE_BFGS(self,runfolder):
         def func(x,*args):
-            self.pulse_options = self.array_like_control(x)
+            #self.pulse_options = localTools.array_like_control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+            new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+            self.update_control(new_controls)
             psi_t = self.propagate(store_states=True)
             lambda_T = self.chis(psi_t[-1])
             lambda_t = self.propagate(True,True,prop_options={'initial_states':lambda_T})
             grad = self.GRAPE_Grad(psi_t,lambda_t)
             JT_eval = self.JT(psi_t[-1])
             if not isinstance(JT_eval,list):JT_eval = [JT_eval]
-            return JT_eval,np.real(grad)
+            return JT_eval,np.real(grad),psi_t[-1]
         if runfolder:
             self.config_opt(runfolder)
-        self.store_initial_controls()
-        x0 = self.control2array()
-        scipy_monitor = iter_info_manager.Monitor(func,x0,self.oct_info['iter_stop'],runfolder,self.n_JT,self.JT_name)
-        bounds = self.array_bounds()
+        x0 = localTools.control2array(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+        log_options = iter_info_manager.Opt_result_options(False,False,'last')
+        scipy_monitor = iter_info_manager.Monitor(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,func,x0)
+        scipy_monitor.store_initial_controls()
+        bounds = localTools.array_bounds(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,bounds = bounds,maxiter=self.oct_info['iter_stop'],callback=scipy_monitor.callback)
-        self.store_array_like_control(x)
-        return scipy_monitor.JT_iter
+        new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+        self.update_control(new_controls)
+        return scipy_monitor
     
     def optimize(self,runfolder = None, monotonic = False):
         if self.oct_info['oct_method'] == 'Krotov':opt_result = self.Krotov_optimization(runfolder,monotonic)
         if self.oct_info['oct_method'] == 'GRAPE':opt_result = self.GRAPE(runfolder,monotonic)
-        if self.oct_info['oct_method'] == 'GRAPE-BFGS':JT_iter = self.GRAPE_BFGS(runfolder)
+        if self.oct_info['oct_method'] == 'GRAPE-BFGS':opt_result = self.GRAPE_BFGS(runfolder)
         return opt_result

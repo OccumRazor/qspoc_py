@@ -2,7 +2,7 @@ import time,numpy as np,matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.interpolate import interp1d
 from dataclasses import dataclass
-from . import read_write
+from . import read_write,localTools
 
 class Iter_info:
     def __init__(self,iter_stop,runfolder=None,n_JT=1,JT_names=None,direction=0):
@@ -84,7 +84,7 @@ class Opt_result_options:
     store_former_control_key:str
 
 class Opt_result(Iter_info):
-    def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder=None,n_JT=1,JT_names=None,direction=1):#store_psi_T_iter=False,sotre_intermideate_state=False,store_former_control_key = False):
+    def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder=None,n_JT=1,JT_names=None,direction=1):
         super().__init__(iter_stop,runfolder,n_JT,JT_names,direction)
         self.Hamiltonian = Hamiltonian
         self.pulse_options = pulse_options
@@ -198,29 +198,36 @@ class Opt_result(Iter_info):
         else:
             plt.show()
 
-class Monitor:
-    def __init__(self,func,x0,iter_stop,runfolder,n_JT,JT_name):
+class Monitor(Opt_result):
+    #def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,direction,func,x0,iter_stop,runfolder,n_JT,JT_name):
+    def __init__(self,iter_stop,tlist,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,func,x0):
+        super().__init__(iter_stop,tlist_long,Hamiltonian,pulse_options,options,runfolder,n_JT,JT_names,0)
         self.last_control = x0
+        self.tlist = tlist
         self.func = func
         self.JT_iter = []
         self.iters = 0
-        self.t_log = [time.time()]
         path_Path = Path(runfolder)
         path_Path.mkdir(exist_ok=True,parents=True)
-        self.iter_log = Iter_info(iter_stop,runfolder,n_JT,JT_name,0)
+        self.tlist_long = tlist_long
+        #self.iter_log = Iter_info(iter_stop,runfolder,n_JT,JT_names,0)
         self.JT_new = None
+        self.t_log = [time.time()]
         self.initial_run()
 
     def initial_run(self):
-        self.JT_new,grad = self.func(self.last_control)
-        self.JT_iter.append(self.JT_new[0])
+        self.JT_new,_,psi_T = self.func(self.last_control)
+        self.psi_T = psi_T
+        self.JT_iter.append(self.JT_new)
         self.t_log.append(time.time())
         dt = self.t_log[-1] - self.t_log[-2]
-        self.iter_log.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
+        #self.iter_log.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
+        self.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
         self.iters += 1
 
     def cost_function(self,x):
-        self.JT_new,grad = self.func(x)
+        self.JT_new,grad,psi_T = self.func(x)
+        self.psi_T = psi_T
         if isinstance(self.JT_new,list):return self.JT_new,grad
         else:return self.JT_new,grad
 
@@ -229,6 +236,9 @@ class Monitor:
         self.last_control = x
         self.t_log.append(time.time())
         dt = self.t_log[-1] - self.t_log[-2]
-        self.iter_log.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1],ga_int=ga_int)
-        self.JT_iter.append(self.JT_new[0])
+        #self.iter_log.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1],ga_int=ga_int)
+        self.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1][0],ga_int=ga_int)
+        new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+        self.store_control(new_controls)
+        self.JT_iter.append(self.JT_new)
         self.iters += 1
