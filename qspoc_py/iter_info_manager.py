@@ -1,5 +1,8 @@
-import time,numpy as np
+import time,numpy as np,matplotlib.pyplot as plt
 from pathlib import Path
+from scipy.interpolate import interp1d
+from dataclasses import dataclass
+from . import read_write
 
 class Iter_info:
     def __init__(self,iter_stop,runfolder=None,n_JT=1,JT_names=None,direction=1):
@@ -15,18 +18,21 @@ class Iter_info:
         self.runfolder = runfolder
         self.iter_str_len = len(str(iter_stop)) + 2
         self.direction = direction
+        self.JT_iter = []
         if not JT_names:
-            JT_names = ['JT'] + [f'JT_{i}' for i in range(n_JT-1)]
+            self.JT_names = ['JT'] + [f'JT_{i}' for i in range(n_JT-1)]
+        else:self.JT_names = JT_names
         if self.runfolder:
             self.out_stream = open(runfolder + 'oct_iters.dat','w')
         message = f'#{' ' * (self.iter_str_len - 3)}iter{' ' * 4}'
-        for JT_name in JT_names:
+        for JT_name in self.JT_names:
             message += JT_name + ' ' * (14 - len(JT_name))
         message += f'dJT{' ' * 11}ga_int{' ' * 8}dt'
         if self.runfolder:self.out_stream.write(message+'\n')
         else:print(message)
     
     def log_iter_info(self,iters,JT_new,dt,JT_last=None,ga_int=None):
+        self.JT_iter.append(JT_new)
         if not JT_last:
             dJT = 0.0
         else:
@@ -62,6 +68,126 @@ class Iter_info:
         if self.runfolder:self.out_stream.write(message+'\n')
         else:print(message)
 
+@dataclass
+class Opt_result_options:
+    store_psi_T_iter:bool
+    sotre_intermideate_state:bool
+    store_former_control_key:str
+
+class Opt_result(Iter_info):
+    def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder=None,n_JT=1,JT_names=None,direction=1):#store_psi_T_iter=False,sotre_intermideate_state=False,store_former_control_key = False):
+        super().__init__(iter_stop,runfolder,n_JT,JT_names,direction)
+        self.Hamiltonian = Hamiltonian
+        self.pulse_options = pulse_options
+        self.tlist_long = tlist_long
+        self.initial_controls = None
+        self.stored_controls = []
+        self.psi_T = None
+        self.psi_T_iter = []
+        self.psi_t = None
+        self.options = options
+
+    def obtain_pulse(self):
+        pulses = {}
+        for Hi in self.Hamiltonian:
+            if isinstance(Hi,list):
+                pulses[Hi[1]] = self.pulse_options[Hi[1]]['args']["fit_func"]
+        return pulses
+
+    def store_psi_T(self,psi_T):
+        self.psi_T = psi_T
+        if self.options.store_psi_T_iter:
+            self.psi_T_iter.append(psi_T)
+
+    def store_initial_controls(self):
+        initial_controls = {}
+        for Hi in self.Hamiltonian:
+            if isinstance(Hi,list):
+                initial_controls[Hi[1]] = self.pulse_options[Hi[1]]['args']['fit_func'](self.tlist_long)
+        self.initial_controls = initial_controls
+
+    def obtain_pulse_real_sequence(self):
+        pulses = []
+        for Hi in self.Hamiltonian:
+            if isinstance(Hi,list):
+                pulses.append([self.pulse_options[Hi[1]]['args']["fit_func"](self.tlist_long),self.pulse_options[Hi[1]]['oct_lambda_a']])
+        return pulses
+
+    def write_pulse(self):
+        pulses = self.obtain_pulse_real_sequence()
+        for i in range(len(pulses)):
+            if pulses[i][1]: # If oct_lambda_a == 0, do not print pulse.
+                control_text = read_write.control2text(self.tlist_long,pulses[i][0])
+                with open(self.runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
+                    pulse_f.write(control_text)
+    def write_psi_T(self):
+        if len(self.psi_T) == 1:
+            state_text = read_write.state2text(self.psi_T[0])
+            with open(self.runfolder+'psi_final_after_oct.dat','w') as state_f:
+                state_f.write(state_text)
+        else:
+            for i in range(len(self.psi_T)):
+                state_text = read_write.state2text(self.psi_T[i])
+                with open(self.runfolder+f'psi_{i}_final_after_oct.dat','w') as state_f:
+                    state_f.write(state_text)
+
+    def store_control(self,new_controls):
+        '''
+        storkey_key == 'last': only store the last two control scheme updated
+                    == 'last': store all updated control scheme
+        '''
+        if self.options.store_former_control_key == 'all':
+            if len(self.stored_controls) == 0:
+                controls_0 = self.obtain_pulse()
+                for H_i in self.Hamiltonian:
+                    if isinstance(H_i,list):
+                        controls_0[H_i[1]] = controls_0[H_i[1]](self.tlist_long)
+                self.stored_controls.append(controls_0)
+            self.stored_controls.append(new_controls)
+        if self.options.store_former_control_key == 'last':
+            if len(self.stored_controls) < 2:
+                self.stored_controls.append(new_controls)
+            else:self.stored_controls = [self.stored_controls[-1],new_controls]
+        for H_i in self.Hamiltonian:
+            if isinstance(H_i,list):
+                if H_i[1] in new_controls.keys():
+                    self.pulse_options[H_i[1]]['args']["fit_func"] =  interp1d(
+                    self.tlist_long, new_controls[H_i[1]], kind="cubic", fill_value="extrapolate")
+        if self.runfolder:
+            self.write_pulse()
+            self.write_psi_T()
+
+    def plot_sotred_pulses(self,fig_name=None):
+        colors = ['r','g','b','c','m','y']
+        if self.initial_controls:
+            self.stored_controls = [self.initial_controls] + self.stored_controls            
+        alphas = np.linspace(0.5,1,len(self.stored_controls))
+        for i in range(len(self.stored_controls)):
+            pulse_count = 0
+            for H_i in self.Hamiltonian:
+                if isinstance(H_i,list):
+                    plt.plot(self.tlist_long,self.stored_controls[i][H_i[1]],color=colors[pulse_count % len(colors)],alpha=alphas[i])
+                    pulse_count += 1
+        if len(self.stored_controls):
+            if fig_name:
+                if self.runfolder:fig_name = self.runfolder + fig_name
+                plt.savefig(fig_name)
+                plt.clf()
+            else:
+                plt.show()
+    
+    def plot_JT_iter(self,fig_name=None):
+        for i in range(self.n_JT):
+            plt.plot([self.JT_iter[iters][i] for iters in range(len(self.JT_iter))],label = self.JT_names[i])
+        plt.legend(loc='best')
+        plt.xlabel('iter')
+        plt.ylabel('JT')
+        if fig_name:
+            if self.runfolder:fig_name = self.runfolder + fig_name
+            plt.savefig(fig_name)
+            plt.clf()
+        else:
+            plt.show()
 
 class Monitor:
     def __init__(self,func,x0,iter_stop,runfolder,n_JT,JT_name):

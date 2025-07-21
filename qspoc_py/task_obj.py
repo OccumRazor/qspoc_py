@@ -307,13 +307,6 @@ class Propagation:
                 pulses[Hi[1]] = self.pulse_options[Hi[1]]['args']["fit_func"]
         return pulses
 
-    def obtain_pulse_real_sequence(self):
-        pulses = []
-        for Hi in self.Hamiltonian:
-            if isinstance(Hi,list):
-                pulses.append([self.pulse_options[Hi[1]]['args']["fit_func"](self.tlist_long),self.pulse_options[Hi[1]]['oct_lambda_a']])
-        return pulses
-
     def plot_pulses(self,ipt_controls = None):
         if ipt_controls:
             for i in range(len(ipt_controls)):
@@ -417,50 +410,6 @@ class Optimization(Propagation):
         self.F_PE = J_T_local.JT_PE(Bell_basis_states,w)
         self.chis_PE = J_T_local.chis_PE(basis,w)
 
-    def store_initial_controls(self):
-        initial_controls = {}
-        for Hi in self.Hamiltonian:
-            if isinstance(Hi,list):
-                initial_controls[Hi[1]] = self.pulse_options[Hi[1]]['args']['fit_func'](self.tlist_long)
-        self.initial_controls = initial_controls
-
-    def update_control(self,new_controls,store_key = False):
-        '''
-        storkey_key == 'last': only store the last two control scheme updated
-                    == 'last': store all updated control scheme
-        '''
-        if store_key == 'all':
-            if len(self.stored_controls) == 0:
-                controls_0 = self.obtain_pulse()
-                for H_i in self.Hamiltonian:
-                    if isinstance(H_i,list):
-                        controls_0[H_i[1]] = controls_0[H_i[1]](self.tlist_long)
-                self.stored_controls.append(controls_0)
-            self.stored_controls.append(new_controls)
-        if store_key == 'last':
-            if len(self.stored_controls) < 2:
-                self.stored_controls.append(new_controls)
-            else:self.stored_controls = [self.stored_controls[-1],new_controls]
-        self.update_control(new_controls)
-
-    def plot_sotred_pulses(self,fig_name=None):
-        colors = ['r','g','b','c','m','y']
-        if self.initial_controls:
-            self.stored_controls = [self.initial_controls] + self.stored_controls            
-        alphas = np.linspace(0.5,1,len(self.stored_controls))
-        for i in range(len(self.stored_controls)):
-            pulse_count = 0
-            for H_i in self.Hamiltonian:
-                if isinstance(H_i,list):
-                    plt.plot(self.tlist_long,self.stored_controls[i][H_i[1]],color=colors[pulse_count % len(colors)],alpha=alphas[i])
-                    pulse_count += 1
-        if len(self.stored_controls):
-            if fig_name:
-                plt.savefig(fig_name)
-                plt.clf()
-            else:
-                plt.show()
-
     def config_opt(self,path,zero_base = True):
         path_Path = Path(path)
         path_Path.mkdir(exist_ok=True,parents=True)
@@ -491,59 +440,24 @@ class Optimization(Propagation):
         config_text = dict2string(config_dict)
         with open(path + 'config', 'w') as config_file:
             config_file.write(config_text)
-    
-    def write2runfolder(self,runfolder,opt_result):
-        for i in range(len(opt_result.optimized_controls)):
-            control_text = read_write.control2text(self.tlist_long,opt_result.optimized_controls[i])
-            with open(runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
-                pulse_f.write(control_text)
-        state_text = read_write.state2text(opt_result.states[-1])
-        with open(runfolder+'psi_final_after_oct.dat','w') as state_f:
-            state_f.write(state_text)
-
-    def store_result(self,runfolder,psi_T):
-        pulses = self.obtain_pulse_real_sequence()
-        for i in range(len(pulses)):
-            if pulses[i][1]: # If oct_lambda_a == 0, do not print pulse.
-                control_text = read_write.control2text(self.tlist_long,pulses[i][0])
-                with open(runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
-                    pulse_f.write(control_text)
-        if self.n_states == 1:
-            state_text = read_write.state2text(psi_T[0])
-            with open(runfolder+'psi_final_after_oct.dat','w') as state_f:
-                state_f.write(state_text)
-        else:
-            for i in range(self.n_states):
-                state_text = read_write.state2text(psi_T[i])
-                with open(runfolder+f'psi_{i}_final_after_oct.dat','w') as state_f:
-                    state_f.write(state_text)
 
     def Krotov_optimization(self,runfolder = None, monotonic = False):
         if runfolder:
             self.config_opt(runfolder)
-        self.store_initial_controls()
+        opt_result_options = iter_info_manager.Opt_result_options(False,False,'all')
+        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,0)
+        opt_result.store_initial_controls()
         JT_iter = []
         tic = time.time()
         psi_T = self.propagate()
         psi_T_last_step = copy.deepcopy(psi_T)
         tac = time.time()
-        #if func_num == 0:
-            #JT_0 = [J_T_local.JT_ss(psi_T,self.target_states)]
-            #n_JT = 1
-            #JT_name = None
-        #if func_num == 1:
-            #JT_0 = self.F_PE(psi_T)
-            #n_JT = 3
-            #JT_name = ['JT','gate_conc','delta_U']
         JT_0 = self.JT(psi_T)
         if not isinstance(JT_0,list):JT_0 = [JT_0]
-        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,self.n_JT,self.JT_name,0)
-        iter_log.log_iter_info(0,JT_0,tac-tic,0,0)
+        opt_result.log_iter_info(0,JT_0,tac-tic,0,0)
         JT_iter.append(JT_0[0])
         ga_bound = 10000
         for iters in range(1,self.oct_info['iter_stop'] + 1):
-            #if func_num == 0 :chis_T = J_T_local.chis_ss(psi_T,self.target_states)
-            #if func_num == 1:chis_T = self.chis_PE(psi_T)
             chis_T = self.chis(psi_T)
             tic = time.time()
             chis_t = self.propagate(True,True,False,prop_options={'initial_states':chis_T})
@@ -560,26 +474,23 @@ class Optimization(Propagation):
                 #psi_T = psi_T_last_step
                 #break
             psi_T_last_step = copy.deepcopy(psi_T)
-            #if func_num == 0:JT_new = [J_T_local.JT_ss(psi_T,self.target_states)]
-            #if func_num == 1:JT_new = self.F_PE(psi_T)
             JT_new = self.JT(psi_T)
             if not isinstance(JT_new,list):JT_new = [JT_new]
             if all([JT_new[0] > JT_iter[-1] and monotonic]) or ga_int > ga_bound:
-                iter_log.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound)
+                opt_result.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound)
                 psi_T = copy.deepcopy(psi_T_last_step)
                 self.change_lambda_a(2)
             else:
-                psi_T_last_step = copy.deepcopy(psi_T)
-                iter_log.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],ga_int)
+                #psi_T_last_step = copy.deepcopy(psi_T)
+                opt_result.store_psi_T(psi_T)
+                opt_result.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],ga_int)
                 JT_iter.append(JT_new[0])
-                self.update_control(new_controls,'last')
-                #self.update_control(new_controls,'all')
-                if runfolder:self.store_result(runfolder,psi_T)
+                self.update_control(new_controls)
+                opt_result.store_control(new_controls)
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
-                    iter_log.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
+                    opt_result.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
-        #if runfolder:self.store_result(runfolder,psi_T)
-        return JT_iter,psi_T
+        return opt_result
 
     def GRAPE_update_pulse(self,psi_t,lambda_t,Hamiltonian,tlist,n_states,pulse_options):
         lambda_t.reverse()
@@ -623,53 +534,48 @@ class Optimization(Propagation):
     def GRAPE(self,runfolder = None, monotonic = False):
         if runfolder:
             self.config_opt(runfolder)
-        self.store_initial_controls()
+        opt_result_options = iter_info_manager.Opt_result_options(False,False,'all')
+        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,0)
+        opt_result.store_initial_controls()
         JT_iter = []
-        iter_log = iter_info_manager.Iter_info(self.oct_info['iter_stop'],runfolder,self.n_JT,self.JT_name,1)
         for iters in range(self.oct_info['iter_stop']):
             tic_0 = time.time()
             psi_t = self.propagate(False,True)
             psi_T = psi_t[-1]
             tac_0 = time.time()
-            #if func_num == 0:JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
-            #if func_num == 1:JT_new = self.F_PE(psi_T)
             JT_new = self.JT(psi_T)
+            if iters == 0:
+                opt_result.log_iter_info(0,JT_new,tac_0-tic_0,0,0)
+            else:
+                opt_result.log_iter_info(iters,JT_new,tac_1-tic_0,JT_iter[-1],ga_int)
+            opt_result.store_psi_T(psi_T)
             if not isinstance(JT_new,list):JT_new = [JT_new]
             if iters:
                 if JT_iter[-1] > JT_new[0] and monotonic:
-                    iter_log.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound = 1e10)
+                    opt_result.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound = 1e10)
                     self.change_lambda_a(2)
                     JT_iter.append(JT_new[0])
-            tic_1 = time.time()
-            #if func_num == 0:lambda_t = self.propagate(True,True,prop_options={'initial_states':self.target_states})
-            #if func_num == 1:lambda_t = self.propagate(True,True,prop_options={'initial_states':self.chis_PE(psi_T)})
             lambda_t = self.propagate(True,True,prop_options={'initial_states':self.chis(psi_T)})
             new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.Hamiltonian,self.tlist_long,self.n_states,self.pulse_options)
             tac_1 = time.time()
-            self.update_control(new_pulses,'last')
-            if iters:
-                iter_log.log_iter_info(iters,JT_new,tac_1-tic_0,JT_iter[-1],ga_int)
-            else:
-                iter_log.log_iter_info(0,JT_new,tac_0-tic_0,0,0)
+            self.update_control(new_pulses)
+            opt_result.store_control(new_pulses)
             JT_iter.append(JT_new[0])
             if iters:
                 if JT_iter[-1] > self.oct_info['JT_conv'] or np.abs(JT_iter[-1] - JT_iter[-2]) < self.oct_info['delta_JT_conv']:
-                    iter_log.log_stop_info(JT_new,self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
+                    opt_result.log_stop_info(JT_new,self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
         if iters == self.oct_info['iter_stop'] - 1:
             iters += 1
             tic = time.time()
             psi_T = self.propagate(False,False)
             tac = time.time()
-            #if func_num == 0:JT_new = [J_T_local.JT_tau(psi_T,self.target_states)]
-            #if func_num == 1:JT_new = self.F_PE(psi_T)
+            opt_result.store_psi_T(psi_T)
             JT_new = self.JT(psi_T)
             if not isinstance(JT_new,list):JT_new = [JT_new]
-            iter_log.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],0)
+            opt_result.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],0)
             JT_iter.append(JT_new[0])
-        if runfolder:
-            self.store_result(runfolder,psi_T)
-        return JT_iter,psi_T
+        return opt_result
 
     def GRAPE_Grad(self,psi_t,lambda_t):
         psi_t = copy.deepcopy(psi_t)
@@ -691,14 +597,8 @@ class Optimization(Propagation):
                         update_table[pulse_i] = h
                         Hip = H_t(self.Hamiltonian,self.tlist_long[i],self.pulse_options,update_table)
                         update_table[pulse_i] = 0
-                        Him = H_t(self.Hamiltonian,self.tlist_long[i],self.pulse_options)
-                        #update_table[pulse_i] = 0
-                        grad_H = (Hip-Him) / h
-                        grad_H = Him
-                        #grad_H = H_t(self.Hamiltonian,self.tlist_long[i],self.pulse_options)
                         grad_i = 0.
                         for j in range(self.n_states):
-                            #Hi_psi = grad_H.dot(psi_t[i][j])
                             Hi_psi = propagation_method.Chebyshev(Hip,psi_t[i][j],self.E_max,self.E_min,dt) - psi_t[i+1][j]
                             grad_i -= 1/h *  np.real(np.inner(np.conjugate(np.reshape(lambda_t[i][j],(state_size))),np.reshape(Hi_psi,(state_size))))
                         grad.append(grad_i)
@@ -725,7 +625,7 @@ class Optimization(Propagation):
                     x_i += 1
                 else:
                     new_controls[H_i][1] = self.pulse_options[H_i[1]]['args']["fit_func"](self.tlist_long)
-        self.update_control(new_controls,'all')
+        self.update_control(new_controls)
 
     def GRAPE_BFGS(self,runfolder):
         def func(x,*args):
@@ -748,7 +648,7 @@ class Optimization(Propagation):
         return scipy_monitor.JT_iter
     
     def optimize(self,runfolder = None, monotonic = False):
-        if self.oct_info['oct_method'] == 'Krotov':JT_iter,psi_T = self.Krotov_optimization(runfolder,monotonic)
-        if self.oct_info['oct_method'] == 'GRAPE':JT_iter,psi_T = self.GRAPE(runfolder,monotonic)
+        if self.oct_info['oct_method'] == 'Krotov':opt_result = self.Krotov_optimization(runfolder,monotonic)
+        if self.oct_info['oct_method'] == 'GRAPE':opt_result = self.GRAPE(runfolder,monotonic)
         if self.oct_info['oct_method'] == 'GRAPE-BFGS':JT_iter = self.GRAPE_BFGS(runfolder)
-        return JT_iter
+        return opt_result
