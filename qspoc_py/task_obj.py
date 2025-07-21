@@ -735,6 +735,12 @@ class Optimization:
         x0 = self.prop.control2array()
         scipy_monitor = iter_info_manager.Monitor(func,x0,self.oct_info['iter_stop'],runfolder,self.n_JT,self.JT_name)
         bounds = self.prop.array_bounds()
-        x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,bounds = bounds,maxfun=self.oct_info['iter_stop'],callback=scipy_monitor.callback)
+        x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,bounds = bounds,maxiter=self.oct_info['iter_stop'],callback=scipy_monitor.callback)
         self.store_array_like_control(x)
         return scipy_monitor.JT_iter
+    
+    def optimize(self,runfolder = None, monotonic = False):
+        if self.oct_info['oct_method'] == 'Krotov':JT_iter,psi_T = self.Krotov_optimization(runfolder,monotonic)
+        if self.oct_info['oct_method'] == 'GRAPE':JT_iter,psi_T = self.GRAPE(runfolder,monotonic)
+        if self.oct_info['oct_method'] == 'GRAPE-BFGS':JT_iter = self.GRAPE_BFGS(runfolder)
+        return JT_iter
