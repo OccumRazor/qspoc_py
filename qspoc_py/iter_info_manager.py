@@ -25,13 +25,17 @@ class Iter_info:
         if self.runfolder:
             self.out_stream = open(runfolder + 'oct_iters.dat','w')
         message = f'#{' ' * (self.iter_str_len - 3)}iter{' ' * 4}'
+        #for JT_name in self.JT_names:
+        #    message += JT_name + ' ' * (14 - len(JT_name))
+        #message += f' dJT{' ' * 11}ga_int{' ' * 8}dt'
         for JT_name in self.JT_names:
-            message += JT_name + ' ' * (14 - len(JT_name))
-        message += f'dJT{' ' * 11}ga_int{' ' * 8}dt'
+            message += JT_name + ' ' * (18 - len(JT_name))
+        message += f' dJT{' ' * 15}ga_int{' ' * 12}dt'
         if self.runfolder:self.out_stream.write(message+'\n')
         else:print(message)
     
     def log_iter_info(self,iters,JT_new,dt,JT_last=None,ga_int=None):
+        dJT_sign_placeholder = ' '
         self.JT_iter.append(JT_new)
         if not JT_last:
             dJT = 0.0
@@ -39,10 +43,13 @@ class Iter_info:
             dJT = JT_last - JT_new[0]
             if self.direction:
                 dJT = -dJT
+        if dJT<0:dJT_sign_placeholder = ''
         if not ga_int:ga_int = 0.0
         message = f'{' ' * (self.iter_str_len-len(str(iters))+2)}{iters}{' ' * 4}'
-        for i in range(self.n_JT): message += f'{JT_new[i]:.8f}{' ' * 4}'
-        message += f'{dJT:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{dt:.2f}'
+        #for i in range(self.n_JT): message += f'{JT_new[i]:.8f}{' ' * 4}'
+        #message += f'{dJT:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{dt:.2f}'
+        for i in range(self.n_JT): message += f'{JT_new[i]:.8e}{' ' * 4}'
+        message += f'{dJT_sign_placeholder}{dJT:.8e}{' ' * 4}{ga_int:.8e}{' ' * 4}{dt:.2f}'
         if self.runfolder:
             self.out_stream.write(message+'\n')
             self.out_stream.flush()
@@ -228,11 +235,11 @@ class Monitor(Opt_result):
     def cost_function(self,x):
         self.JT_new,grad,psi_T = self.func(x)
         self.psi_T = psi_T
-        if isinstance(self.JT_new,list):return self.JT_new,grad
+        if isinstance(self.JT_new,list):return self.JT_new[0],grad
         else:return self.JT_new,grad
 
     def callback(self,x):
-        ga_int = sum(np.abs(x-self.last_control))
+        ga_int = sum(np.abs(x-self.last_control)) * (self.tlist_long[1] - self.tlist_long[0])
         self.last_control = x
         self.t_log.append(time.time())
         dt = self.t_log[-1] - self.t_log[-2]

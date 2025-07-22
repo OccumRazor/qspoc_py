@@ -393,7 +393,7 @@ class Optimization(Propagation):
     def Krotov_optimization(self,runfolder = None, monotonic = False):
         if runfolder:
             self.config_opt(runfolder)
-        opt_result_options = iter_info_manager.Opt_result_options(False,False,'all')
+        opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
         opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,0)
         opt_result.store_initial_controls()
         JT_iter = []
@@ -570,7 +570,7 @@ class Optimization(Propagation):
         scipy_monitor = iter_info_manager.Monitor(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,func,x0)
         scipy_monitor.store_initial_controls()
         bounds = localTools.array_bounds(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
-        x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,bounds = bounds,maxiter=self.oct_info['iter_stop'],callback=scipy_monitor.callback)
+        x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,bounds = bounds,maxiter=self.oct_info['iter_stop'],callback=scipy_monitor.callback,facrtr=10,maxls=10)
         new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         self.update_control(new_controls)
         return scipy_monitor
