@@ -524,13 +524,17 @@ class Optimization(Propagation):
         JT_iter.append(JT_new[0])
         return opt_result
 
-    def GRAPE_Grad(self,psi_t,lambda_t):
+    def GRAPE_Grad(self,psi_t,lambda_t,order=2):
+        '''
+        Order: int should equal 
+        '''
+        assert order in [1,2], f'order should euqal either 1 or 2. Input order: {order}'
         psi_t = copy.deepcopy(psi_t)
         lambda_t = copy.deepcopy(lambda_t)
         lambda_t.reverse()
         state_size = psi_t[0][0].size
         dt = self.tlist_long[1] - self.tlist_long[0]
-        h = 1e-7
+        h = 1e-10
         grad = []
         update_table = {}
         for i in range(len(self.Hamiltonian)):
@@ -543,36 +547,47 @@ class Optimization(Propagation):
                     for i in range(self.tlist[-1] - 1):
                         update_table[pulse_i] = h
                         Hip = H_t(self.Hamiltonian,self.tlist_long[i],self.pulse_options,update_table)
+                        if order == 2:
+                            update_table[pulse_i] = -h
+                            Him = H_t(self.Hamiltonian,self.tlist_long[i],self.pulse_options,update_table)
                         update_table[pulse_i] = 0
                         grad_i = 0.
                         for j in range(self.n_states):
-                            Hi_psi = propagation_method.Chebyshev(Hip,psi_t[i][j],self.E_max,self.E_min,dt) - psi_t[i+1][j]
-                            grad_i -= 1/h *  np.real(np.inner(np.conjugate(np.reshape(lambda_t[i][j],(state_size))),np.reshape(Hi_psi,(state_size))))
+                            if order == 2:
+                                Hi_psi = propagation_method.Chebyshev(Hip,psi_t[i][j],self.E_max,self.E_min,dt) - propagation_method.Chebyshev(Him,psi_t[i][j],self.E_max,self.E_min,dt)
+                            else:
+                                Hi_psi = propagation_method.Chebyshev(Hip,psi_t[i][j],self.E_max,self.E_min,dt) - psi_t[i+1][j]
+                            grad_i -= 1/h/order *  np.real(np.inner(np.conjugate(np.reshape(lambda_t[i][j],(state_size))),np.reshape(Hi_psi,(state_size))))
                         grad.append(grad_i)
         return grad
 
     def GRAPE_BFGS(self,runfolder):
-        def func(x,*args):
+        def func(x,approx_grad,order,*args):
             #self.pulse_options = localTools.array_like_control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
             new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
             self.update_control(new_controls)
             psi_t = self.propagate(store_states=True)
-            lambda_T = self.chis(psi_t[-1])
-            lambda_t = self.propagate(True,True,prop_options={'initial_states':lambda_T})
-            grad = self.GRAPE_Grad(psi_t,lambda_t)
+            if not approx_grad:
+                lambda_T = self.chis(psi_t[-1])
+                lambda_t = self.propagate(True,True,prop_options={'initial_states':lambda_T})
+                grad = self.GRAPE_Grad(psi_t,lambda_t,order)
             JT_eval = self.JT(psi_t[-1])
             if not isinstance(JT_eval,list):JT_eval = [JT_eval]
-            return JT_eval,np.real(grad),psi_t[-1]
+            if approx_grad:return JT_eval,psi_t[-1]
+            else:return JT_eval,np.real(grad),psi_t[-1]
         if runfolder:
             self.config_opt(runfolder)
         x0 = localTools.control2array(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         log_options = iter_info_manager.Opt_result_options(False,False,'last')
-        scipy_monitor = iter_info_manager.Monitor(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,func,x0)
+        scipy_monitor = iter_info_manager.Monitor(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,func,x0, order = 2)
         scipy_monitor.store_initial_controls()
         bounds = localTools.array_bounds(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
-        x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,bounds = bounds,maxiter=self.oct_info['iter_stop'],callback=scipy_monitor.callback,facrtr=10,maxls=10)
+        scipy_monitor.set_iter_params(factr = 10, maxls = 10)
+        x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,approx_grad=scipy_monitor.approx_grad,bounds = bounds,maxiter=scipy_monitor.iter_stop,
+                              maxfun=scipy_monitor.maxfun,callback=scipy_monitor.callback,factr=scipy_monitor.factr,maxls=scipy_monitor.maxls)
         new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         self.update_control(new_controls)
+        scipy_monitor.log_finish_info(x,f,d)
         return scipy_monitor
     
     def optimize(self,runfolder = None, monotonic = False):

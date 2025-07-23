@@ -207,8 +207,9 @@ class Opt_result(Iter_info):
 
 class Monitor(Opt_result):
     #def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,direction,func,x0,iter_stop,runfolder,n_JT,JT_name):
-    def __init__(self,iter_stop,tlist,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,func,x0):
+    def __init__(self,iter_stop,tlist,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,func,x0,approx_grad=False,order = 2):
         super().__init__(iter_stop,tlist_long,Hamiltonian,pulse_options,options,runfolder,n_JT,JT_names,0)
+        self.iter_stop = iter_stop
         self.last_control = x0
         self.tlist = tlist
         self.func = func
@@ -217,13 +218,19 @@ class Monitor(Opt_result):
         path_Path = Path(runfolder)
         path_Path.mkdir(exist_ok=True,parents=True)
         self.tlist_long = tlist_long
-        #self.iter_log = Iter_info(iter_stop,runfolder,n_JT,JT_names,0)
+        self.approx_grad = approx_grad
         self.JT_new = None
         self.t_log = [time.time()]
+        self.order = order
         self.initial_run()
 
+    def set_iter_params(self,factr,maxls):
+        self.factr = factr
+        self.maxls = maxls
+        self.maxfun = self.maxls * self.iter_stop + 1
+
     def initial_run(self):
-        self.JT_new,_,psi_T = self.func(self.last_control)
+        self.JT_new,_,psi_T = self.func(self.last_control,False,self.order)
         self.psi_T = psi_T
         self.JT_iter.append(self.JT_new)
         self.t_log.append(time.time())
@@ -233,10 +240,13 @@ class Monitor(Opt_result):
         self.iters += 1
 
     def cost_function(self,x):
-        self.JT_new,grad,psi_T = self.func(x)
+        if self.approx_grad:self.JT_new,psi_T = self.func(x,self.approx_grad,self.order)
+        else:self.JT_new,grad,psi_T = self.func(x,self.approx_grad,self.order)
         self.psi_T = psi_T
-        if isinstance(self.JT_new,list):return self.JT_new[0],grad
-        else:return self.JT_new,grad
+        if isinstance(self.JT_new,list):JT = self.JT_new[0]
+        else:JT = self.JT_new
+        if self.approx_grad:return JT
+        else:return JT,grad
 
     def callback(self,x):
         ga_int = sum(np.abs(x-self.last_control)) * (self.tlist_long[1] - self.tlist_long[0])
@@ -249,3 +259,19 @@ class Monitor(Opt_result):
         self.store_control(new_controls)
         self.JT_iter.append(self.JT_new)
         self.iters += 1
+    
+    def exit_clause(self,d):
+        if d['warnflag'] == 0: return 'converged'
+        if d['warnflag'] == 1: return 'too many function evaluations or too many iterations'
+        if d['warnflag'] == 2: return f'stopped for another reason: \n\t{d['task']}'
+
+    def log_finish_info(self,x,f,d):
+        new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+        self.store_control(new_controls)
+        with open(self.runfolder+'finish_report.dat','w') as report_f:
+            report_f.write(f'L-BFGS-B optimization parameters: \n\tmax_iter {self.iter_stop}, \n\tJT_conv {self.factr} * eps, \n\tmax_num of line search {self.maxls}\n\tapprox_grad: {self.approx_grad}\n')
+            report_f.write(f'Optimization finishes with functional value {f}\n')
+            report_f.write(f'Exit Clause: {d['warnflag']} - {self.exit_clause(d)}\n')
+            report_f.write(f'Number of functional calls: {d['funcalls']}\n')
+            report_f.write(f'Number of iterations: {d['nit']}\n')
+        return 0
