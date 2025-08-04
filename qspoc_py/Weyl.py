@@ -1,4 +1,5 @@
 import numpy as np,copy
+from scipy import linalg
 
 Qmagic = (1.0 / np.sqrt(2.0)) * np.array(
         [[1, 0, 0, 1j], [0, 1j, 1, 0], [0, 1j, -1, 0], [1, 0, 0, -1j]],
@@ -89,7 +90,8 @@ def _get_a_kl_PE(UB):
     """
 
     # Compute auxiliary scalar quantities
-    detU = _cmat4_det(UB)
+    #detU = _cmat4_det(UB)
+    detU = linalg.det(UB)
     rcdetU1 = 1.0 / detU
     #mU = UB.trans() * UB
     mU = np.matmul(np.transpose(UB),UB)
@@ -290,7 +292,8 @@ def _dDetUdAlpha(U,a,b):
             else:
                 U_prime[i,j] = U[i,j]
     U_prime[a,b] = 1
-    return _cmat4_det(U_prime)
+    return linalg.det(U_prime)
+    #return _cmat4_det(U_prime)
 
 
 def _dDetUdBeta(U,a,b):

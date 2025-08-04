@@ -329,8 +329,6 @@ class Optimization(Propagation):
         #    'iter_stop':iter_stop}
         #self.target_states = None
         #self.observables = None
-        #self.stored_controls = []
-        #self.initial_controls = None
     
     def custom_init(self,opt_method,JT_conv,delta_JT_conv,iter_dat,iter_stop):
         self.oct_info = {
@@ -341,8 +339,6 @@ class Optimization(Propagation):
             'iter_stop':iter_stop}
         self.target_states = None
         self.observables = None
-        self.stored_controls = []
-        self.initial_controls = None
 
     def set_target_states(self,target_states):
         self.target_states = target_states
@@ -394,7 +390,7 @@ class Optimization(Propagation):
         if runfolder:
             self.config_opt(runfolder)
         opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
-        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,0)
+        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,False)
         opt_result.store_initial_controls()
         JT_iter = []
         tic = time.time()
@@ -426,7 +422,7 @@ class Optimization(Propagation):
             JT_new = self.JT(psi_T)
             if not isinstance(JT_new,list):JT_new = [JT_new]
             if all([JT_new[0] > JT_iter[-1] and monotonic]) or ga_int > ga_bound:
-                opt_result.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound)
+                opt_result.log_break_info(JT_new,JT_iter[-1],iters,ga_int,ga_bound)
                 psi_T = copy.deepcopy(psi_T_last_step)
                 self.change_lambda_a(2)
             else:
@@ -484,7 +480,8 @@ class Optimization(Propagation):
         if runfolder:
             self.config_opt(runfolder)
         opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
-        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,0)
+        oct_direction = False # Gradient Descent if not True else Gradient Ascent
+        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,oct_direction)
         opt_result.store_initial_controls()
         JT_iter = []
         for iters in range(self.oct_info['iter_stop']):
@@ -500,10 +497,12 @@ class Optimization(Propagation):
                 opt_result.log_iter_info(iters,JT_new,tac_0-tic_1,JT_iter[-1],ga_int)
             opt_result.store_psi_T(psi_T)
             if iters:
-                if JT_iter[-1] > JT_new[0] and monotonic:
-                    opt_result.log_break_info(JT_new,JT_iter[-1],ga_int,ga_bound = 1e10)
+                monotonicity_break = JT_iter[-1] > JT_new[0] if oct_direction else JT_iter[-1] < JT_new[0]
+                #if JT_iter[-1] > JT_new[0] and monotonic:
+                if monotonicity_break and monotonic:
+                    opt_result.log_break_info(JT_new,JT_iter[-1],iters,ga_int,ga_bound = 1e10)
                     self.change_lambda_a(2)
-                    JT_iter.append(JT_new[0])
+                    #JT_iter.append(JT_new[0])
             tic_1 = time.time()
             lambda_t = self.propagate(True,True,prop_options={'initial_states':self.chis(psi_T)})
             new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.Hamiltonian,self.tlist_long,self.n_states,self.pulse_options)
@@ -582,9 +581,9 @@ class Optimization(Propagation):
         scipy_monitor = iter_info_manager.Monitor(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,func,x0, order = 2)
         scipy_monitor.store_initial_controls()
         bounds = localTools.array_bounds(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
-        scipy_monitor.set_iter_params(factr = 10, maxls = 10)
+        scipy_monitor.set_iter_params(factr = 1e4, maxls = 40,pgtol = 1e-8)
         x,f,d = fmin_l_bfgs_b(scipy_monitor.cost_function,x0,approx_grad=scipy_monitor.approx_grad,bounds = bounds,maxiter=scipy_monitor.iter_stop,
-                              maxfun=scipy_monitor.maxfun,callback=scipy_monitor.callback,factr=scipy_monitor.factr,maxls=scipy_monitor.maxls)
+                              maxfun=scipy_monitor.maxfun,callback=scipy_monitor.callback,factr=scipy_monitor.factr,maxls=scipy_monitor.maxls,pgtol=scipy_monitor.pgtol)
         new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         self.update_control(new_controls)
         scipy_monitor.log_finish_info(x,f,d)

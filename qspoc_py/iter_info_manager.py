@@ -1,12 +1,14 @@
-import time,numpy as np,matplotlib.pyplot as plt
+import time,numpy as np,matplotlib.pyplot as plt,datetime
 from pathlib import Path
 from scipy.interpolate import interp1d
 from dataclasses import dataclass
 from . import read_write,localTools
 
 class Iter_info:
-    def __init__(self,iter_stop,runfolder=None,n_JT=1,JT_names=None,direction=0):
+    def __init__(self,iter_stop:int,runfolder=None,n_JT:int=1,JT_names=None,direction:bool=False):
         '''
+        Parameters
+        ----------
         iter_stop: int specify number of iterations, required for the purpose of alignment.\n
         runfolder: upon input, iter info will be written into runfolder/oct_iters.dat, otherwise printed to terminal.\n
         n_JT: give n_JT > 1 if JT is composed of multiple terms and each term is given specifically, otherwise only the first digit will be logged.\n
@@ -75,6 +77,13 @@ class Iter_info:
         if self.runfolder:self.out_stream.write(message+'\n')
         else:print(message)
 
+    def log_time2out_file(self,keyword:str=''):
+        message = f'# entrance time: {datetime.datetime.now()}\n# {keyword}'
+        if self.runfolder:
+            self.out_stream.write(message+'\n')
+            self.out_stream.flush()
+        else:print(message)
+
 @dataclass
 class Opt_result_options:
     '''
@@ -91,7 +100,7 @@ class Opt_result_options:
     store_former_control_key:str
 
 class Opt_result(Iter_info):
-    def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder=None,n_JT=1,JT_names=None,direction=1):
+    def __init__(self,iter_stop:int,tlist_long:list,Hamiltonian,pulse_options:dict,options:Opt_result_options,runfolder=None,n_JT=1,JT_names=None,direction:bool=False):
         super().__init__(iter_stop,runfolder,n_JT,JT_names,direction)
         self.Hamiltonian = Hamiltonian
         self.pulse_options = pulse_options
@@ -213,7 +222,6 @@ class Monitor(Opt_result):
         self.last_control = x0
         self.tlist = tlist
         self.func = func
-        self.JT_iter = []
         self.iters = 0
         path_Path = Path(runfolder)
         path_Path.mkdir(exist_ok=True,parents=True)
@@ -222,17 +230,24 @@ class Monitor(Opt_result):
         self.JT_new = None
         self.t_log = [time.time()]
         self.order = order
-        self.initial_run()
+        self.__initial_run()
 
-    def set_iter_params(self,factr,maxls):
+    def set_iter_params(self,factr:float,maxls:int,pgtol:float):
+        '''
+        parameters for l-bfgs-b:\n
+
+        factr: float
+        maxls:int
+        pgtol:float
+        '''
         self.factr = factr
         self.maxls = maxls
         self.maxfun = self.maxls * self.iter_stop + 1
+        self.pgtol = pgtol
 
-    def initial_run(self):
-        self.JT_new,_,psi_T = self.func(self.last_control,False,self.order)
+    def __initial_run(self):
+        self.JT_new,psi_T = self.func(self.last_control,True,self.order)
         self.psi_T = psi_T
-        self.JT_iter.append(self.JT_new)
         self.t_log.append(time.time())
         dt = self.t_log[-1] - self.t_log[-2]
         #self.iter_log.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
@@ -257,11 +272,10 @@ class Monitor(Opt_result):
         self.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1][0],ga_int=ga_int)
         new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         self.store_control(new_controls)
-        self.JT_iter.append(self.JT_new)
         self.iters += 1
     
-    def exit_clause(self,d):
-        if d['warnflag'] == 0: return 'converged'
+    def __exit_clause(self,d):
+        if d['warnflag'] == 0: return f'converged\n\t{d['task']}'
         if d['warnflag'] == 1: return 'too many function evaluations or too many iterations'
         if d['warnflag'] == 2: return f'stopped for another reason: \n\t{d['task']}'
 
@@ -269,9 +283,10 @@ class Monitor(Opt_result):
         new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         self.store_control(new_controls)
         with open(self.runfolder+'finish_report.dat','w') as report_f:
-            report_f.write(f'L-BFGS-B optimization parameters: \n\tmax_iter {self.iter_stop}, \n\tJT_conv {self.factr} * eps, \n\tmax_num of line search {self.maxls}\n\tapprox_grad: {self.approx_grad}\n')
+            report_f.write(f'''L-BFGS-B optimization parameters: \n\tmax_iter {self.iter_stop}, \n\tJT_conv {self.factr:.2e} * eps, 
+                           \n\tmax_num of line search {self.maxls}\n\tapprox_grad: {self.approx_grad}\n\tpgtol: {self.pgtol:.2e}\n''')
             report_f.write(f'Optimization finishes with functional value {f}\n')
-            report_f.write(f'Exit Clause: {d['warnflag']} - {self.exit_clause(d)}\n')
+            report_f.write(f'Exit Clause: {d['warnflag']} - {self.__exit_clause(d)}\n')
             report_f.write(f'Number of functional calls: {d['funcalls']}\n')
             report_f.write(f'Number of iterations: {d['nit']}\n')
         return 0
