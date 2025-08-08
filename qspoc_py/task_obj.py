@@ -339,6 +339,7 @@ class Optimization(Propagation):
             'iter_stop':iter_stop}
         self.target_states = None
         self.observables = None
+        self.functional_info = None
 
     def set_target_states(self,target_states):
         self.target_states = target_states
@@ -354,6 +355,7 @@ class Optimization(Propagation):
         self.initial_states = Bell_basis_states
         self.F_PE = J_T_local.JT_PE(Bell_basis_states,w)
         self.chis_PE = J_T_local.chis_PE(basis,w)
+        self.functional_info = f'Functional name: PE\nFunctional parameters: w = {w}'
 
     def config_opt(self,path,zero_base = True):
         path_Path = Path(path)
@@ -390,7 +392,7 @@ class Optimization(Propagation):
         if runfolder:
             self.config_opt(runfolder)
         opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
-        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,False)
+        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,False,self.functional_info)
         opt_result.store_initial_controls()
         JT_iter = []
         tic = time.time()
@@ -481,7 +483,7 @@ class Optimization(Propagation):
             self.config_opt(runfolder)
         opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
         oct_direction = False # Gradient Descent if not True else Gradient Ascent
-        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,oct_direction)
+        opt_result = iter_info_manager.Opt_result(self.oct_info['iter_stop'],self.tlist_long,self.Hamiltonian,self.pulse_options,opt_result_options,runfolder,self.n_JT,self.JT_name,oct_direction,self.functional_info)
         opt_result.store_initial_controls()
         JT_iter = []
         for iters in range(self.oct_info['iter_stop']):
@@ -578,7 +580,7 @@ class Optimization(Propagation):
             self.config_opt(runfolder)
         x0 = localTools.control2array(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         log_options = iter_info_manager.Opt_result_options(False,False,'last')
-        scipy_monitor = iter_info_manager.Monitor(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,func,x0, order = 2)
+        scipy_monitor = iter_info_manager.Monitor(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,self.functional_info,func,x0, order = 2)
         scipy_monitor.store_initial_controls()
         bounds = localTools.array_bounds(self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         scipy_monitor.set_iter_params(factr = 1e4, maxls = 40,pgtol = 1e-8)

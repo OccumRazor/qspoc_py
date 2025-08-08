@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from . import read_write,localTools
 
 class Iter_info:
-    def __init__(self,iter_stop:int,runfolder=None,n_JT:int=1,JT_names=None,direction:bool=False):
+    def __init__(self,iter_stop:int,runfolder=None,n_JT:int=1,JT_names=None,direction:bool=False,functional_info=None):
         '''
         Parameters
         ----------
@@ -33,8 +33,14 @@ class Iter_info:
         for JT_name in self.JT_names:
             message += JT_name + ' ' * (18 - len(JT_name))
         message += f' dJT{' ' * 15}ga_int{' ' * 12}dt'
-        if self.runfolder:self.out_stream.write(message+'\n')
-        else:print(message)
+        if self.runfolder:
+            if functional_info:
+                with open(runfolder + 'functional_info.dat','w') as functional_log:
+                    functional_log.write(functional_info)
+            self.out_stream.write(message+'\n')
+        else:
+            print(functional_info)
+            print(message)
     
     def log_iter_info(self,iters,JT_new,dt,JT_last=None,ga_int=None):
         dJT_sign_placeholder = ' '
@@ -59,10 +65,10 @@ class Iter_info:
     
     def log_break_info(self,JT_new,JT_last,iters,ga_int,ga_bound):
         if self.direction:
-            if JT_new[0] < JT_last:message = f'#{' ' * (self.iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new[0]}, increase lambda_a by a factor of 2.'
+            if JT_new[0] < JT_last:message = f'#{' ' * (1 + self.iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new[0]}, increase lambda_a by a factor of 2.'
             else:message = f'# ga_int ({ga_int}) > ga_bound ({ga_bound}), increase lambda_a by a factor of 2.'
         else:
-            if JT_new[0] > JT_last:message = f'#{' ' * (self.iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new[0]}, increase lambda_a by a factor of 2.'
+            if JT_new[0] > JT_last:message = f'#{' ' * (1 +self.iter_str_len - len(str(iters)))}{iters} monotonicity breaks, JT_new = {JT_new[0]}, increase lambda_a by a factor of 2.'
             else:message = f'# ga_int ({ga_int}) > ga_bound ({ga_bound}), increase lambda_a by a factor of 2.'
         if self.runfolder:
             self.out_stream.write(message+'\n')
@@ -100,8 +106,8 @@ class Opt_result_options:
     store_former_control_key:str
 
 class Opt_result(Iter_info):
-    def __init__(self,iter_stop:int,tlist_long:list,Hamiltonian,pulse_options:dict,options:Opt_result_options,runfolder=None,n_JT=1,JT_names=None,direction:bool=False):
-        super().__init__(iter_stop,runfolder,n_JT,JT_names,direction)
+    def __init__(self,iter_stop:int,tlist_long:list,Hamiltonian,pulse_options:dict,options:Opt_result_options,runfolder=None,n_JT=1,JT_names=None,direction:bool=False,functional_info=None):
+        super().__init__(iter_stop,runfolder,n_JT,JT_names,direction,functional_info)
         self.Hamiltonian = Hamiltonian
         self.pulse_options = pulse_options
         self.tlist_long = tlist_long
@@ -216,8 +222,8 @@ class Opt_result(Iter_info):
 
 class Monitor(Opt_result):
     #def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,direction,func,x0,iter_stop,runfolder,n_JT,JT_name):
-    def __init__(self,iter_stop,tlist,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,func,x0,approx_grad=False,order = 2):
-        super().__init__(iter_stop,tlist_long,Hamiltonian,pulse_options,options,runfolder,n_JT,JT_names,0)
+    def __init__(self,iter_stop,tlist,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,functional_info,func,x0,approx_grad=False,order = 2):
+        super().__init__(iter_stop,tlist_long,Hamiltonian,pulse_options,options,runfolder,n_JT,JT_names,0,functional_info)
         self.iter_stop = iter_stop
         self.last_control = x0
         self.tlist = tlist
