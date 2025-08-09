@@ -219,6 +219,16 @@ class Opt_result(Iter_info):
             plt.clf()
         else:
             plt.show()
+    
+    def log_psi_T_analysis(self,log_function=None):
+        if log_function:
+            text_info = log_function(self.psi_T)
+        if self.runfolder:
+            with open(self.runfolder + 'psi_T_info.dat','w') as psi_T_log:
+                psi_T_log.write(text_info)
+        else:
+            print(text_info)
+
 
 class Monitor(Opt_result):
     #def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,direction,func,x0,iter_stop,runfolder,n_JT,JT_name):

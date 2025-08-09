@@ -340,6 +340,7 @@ class Optimization(Propagation):
         self.target_states = None
         self.observables = None
         self.functional_info = None
+        self.psi_T_analysis = None
 
     def set_target_states(self,target_states):
         self.target_states = target_states
@@ -353,7 +354,7 @@ class Optimization(Propagation):
                              1j * np.sqrt(0.5) * (self.initial_states[1] + self.initial_states[2]),
                              np.sqrt(0.5) * (self.initial_states[1] - self.initial_states[2])]
         self.initial_states = Bell_basis_states
-        self.F_PE = J_T_local.JT_PE(Bell_basis_states,w)
+        self.F_PE,self.psi_T_analysis = J_T_local.JT_PE(Bell_basis_states,w)
         self.chis_PE = J_T_local.chis_PE(basis,w)
         self.functional_info = f'Functional name: PE\nFunctional parameters: w = {w}'
 
@@ -437,6 +438,8 @@ class Optimization(Propagation):
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
                     opt_result.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
+        if self.psi_T_analysis:
+            opt_result.log_psi_T_analysis(self.psi_T_analysis)
         return opt_result
 
     def GRAPE_update_pulse(self,psi_t,lambda_t,Hamiltonian,tlist,n_states,pulse_options):
@@ -522,6 +525,8 @@ class Optimization(Propagation):
         JT_new = self.JT(psi_T)
         if not isinstance(JT_new,list):JT_new = [JT_new]
         opt_result.log_iter_info(iters,JT_new,tac_2-tic_1,JT_iter[-1],ga_int)
+        if self.psi_T_analysis:
+            opt_result.log_psi_T_analysis(self.psi_T_analysis)
         JT_iter.append(JT_new[0])
         return opt_result
 
@@ -589,6 +594,8 @@ class Optimization(Propagation):
         new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         self.update_control(new_controls)
         scipy_monitor.log_finish_info(x,f,d)
+        if self.psi_T_analysis:
+            scipy_monitor.log_psi_T_analysis(self.psi_T_analysis)
         return scipy_monitor
     
     def optimize(self,runfolder = None, monotonic = False):

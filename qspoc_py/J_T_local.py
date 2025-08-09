@@ -1,4 +1,7 @@
 import numpy as np,copy
+from .read_write import matrix2text
+from . import Weyl
+from scipy.linalg import svd
 
 def tau(state,ref):
     res=0j
@@ -68,19 +71,6 @@ def JT_ss(refs,states):
         tau_val = tau(states,refs)
         return 1-np.real(tau_val*np.conjugate(tau_val))
 
-from . import Weyl
-
-'''
-def JT_PE(states,basis):
-    U = Weyl.state2gate(basis,states)
-    c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
-    g1,g2,g3 = Weyl.c2g(c1,c2,c3)
-    conc = Weyl.concurrence(c1,c2,c3)
-    F_PE = g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0
-    print("    F_PE: %f\n    gate conc.: %f" % (F_PE, conc))
-    return F_PE
-'''
-
 def JT_PE(basis,w):
     if w < 0: w = 0
     if w > 1: w = 1
@@ -91,10 +81,24 @@ def JT_PE(basis,w):
         conc = Weyl.concurrence(c1,c2,c3)
         Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         F_PE = (1-w) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + w * Delta_U
-        #print("    F_PE: %f\n    gate conc.: %f Delta_U: %f" % (F_PE, conc, w * Delta_U))
-        #return F_PE
         return [F_PE,conc,w*Delta_U]
-    return JT
+    def U_info(psi_T):
+        U = Weyl.state2gate(basis,psi_T)
+        U_cano = Weyl.from_magic(U)
+        c1,c2,c3 = Weyl.c1c2c3(U_cano)
+        U_text = f'c1: {c1} c2: {c2} c3: {c3}\n'
+        U_text += matrix2text(U_cano)
+        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U_cano)),U_cano))) / 4
+        U_text += f'\n Norm of U: {Delta_U}\n'
+        U_svd,s,Vh = svd(U_cano)
+        U_cano = np.matmul(U_svd,Vh)
+        c1,c2,c3 = Weyl.c1c2c3(U_cano)
+        U_text += f'Above is before svd reconstruction\nc1: {c1} c2: {c2} c3: {c3}\n'
+        U_text += matrix2text(U_cano)
+        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U_cano)),U_cano))) / 4
+        U_text += f'\n Norm of U: {Delta_U}\n'
+        return U_text
+    return JT,U_info
 
 def chis_PE(canonical_basis,w):
     if w < 0: w = 0
