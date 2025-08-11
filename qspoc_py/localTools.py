@@ -317,7 +317,7 @@ def array2control(x,tlist,pulse_options,Hamiltonian,tlist_long):
         if isinstance(H_i,list):
             if pulse_options[H_i[1]]['oct_lambda_a']:
                 for i in range(nt):
-                    new_controls[H_i[1]][i]=x[x_i][i]
+                    new_controls[H_i[1]][i]=x[x_i][i] * pulse_options[H_i[1]]['update_shape'](tlist_long[i])
                 x_i += 1
             else:
                 new_controls[H_i][1] = pulse_options[H_i[1]]['args']["fit_func"](tlist_long)
@@ -350,8 +350,10 @@ def array_bounds(tlist,pulse_options,Hamiltonian,tlist_long):
     for H_i in Hamiltonian:
         if isinstance(H_i,list):
             if pulse_options[H_i[1]]['oct_lambda_a']:
-                ub[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_max'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
-                lb[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_min'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
+                #ub[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_max'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
+                #lb[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_min'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
+                ub[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_max'] * nt
+                lb[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_min'] * nt
                 x_i += 1
     bounds = [(lbi,ubi) for lbi,ubi in zip(lb,ub)]
     return bounds

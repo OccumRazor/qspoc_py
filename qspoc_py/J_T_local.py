@@ -86,17 +86,21 @@ def JT_PE(basis,w):
         U = Weyl.state2gate(basis,psi_T)
         U_cano = Weyl.from_magic(U)
         c1,c2,c3 = Weyl.c1c2c3(U_cano)
-        U_text = f'c1: {c1} c2: {c2} c3: {c3}\n'
+        U_text = f'c1/pi: {c1} c2/pi: {c2} c3/pi: {c3}\n'
         U_text += matrix2text(U_cano)
-        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U_cano)),U_cano))) / 4
+        Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         U_text += f'\n Norm of U: {Delta_U}\n'
-        U_svd,s,Vh = svd(U_cano)
-        U_cano = np.matmul(U_svd,Vh)
+        conc = Weyl.concurrence(c1,c2,c3)
+        U_text += f'concurrence: {conc}\n'
+        U_svd,s,Vh = svd(U)
+        U = np.matmul(U_svd,Vh)
+        U_cano = Weyl.from_magic(U)
         c1,c2,c3 = Weyl.c1c2c3(U_cano)
-        U_text += f'Above is before svd reconstruction\nc1: {c1} c2: {c2} c3: {c3}\n'
+        U_text += f'Above is before svd reconstruction\nc1/pi: {c1} c2/pi: {c2} c3/pi: {c3}\n'
         U_text += matrix2text(U_cano)
-        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U_cano)),U_cano))) / 4
+        Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         U_text += f'\n Norm of U: {Delta_U}\n'
+        U_text += f'concurrence: {conc}\n'
         return U_text
     return JT,U_info
 
