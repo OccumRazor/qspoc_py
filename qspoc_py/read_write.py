@@ -48,20 +48,32 @@ def state2text(state, zero_base = True):
         else:text_content += f'{initial}{state.row[i] + base_num}{real_formatted}\n'
     return text_content
 
-def matrix2text(matrix, zero_base = True):
+def matrix2text(matrix, zero_base = True,sparse = True):
     if zero_base: base_num = 0
     else:base_num = 1
-    if not isinstance(matrix,coo_matrix):matrix = coo_matrix(matrix)  
-    len_max_row = len(str(matrix.shape[0] + base_num))  
-    is_complex = all(np.iscomplex(matrix.data))
-    text_content = matrix_title(matrix.shape,is_complex)
-    for i in range(len(matrix.row)):
-        row_text = space_symbol * (3 + len_max_row - len(str(matrix.row[i] + base_num))) + str(matrix.row[i] + base_num)
-        col_text = space_symbol * (3 + len_max_row - len(str(matrix.col[i] + base_num))) + str(matrix.col[i] + base_num)
-        imag_formatted = space4_symbol +"{: .16E}".format(np.imag(matrix.data[i]))
-        real_formatted = space4_symbol +"{: .16E}".format(np.real(matrix.data[i]))
-        if is_complex:text_content += row_text + col_text + real_formatted + imag_formatted + '\n'
-        else:text_content += row_text + col_text + real_formatted + '\n'
+    if sparse:
+        if not isinstance(matrix,coo_matrix):matrix = coo_matrix(matrix)  
+        len_max_row = len(str(matrix.shape[0] + base_num))  
+        is_complex = any(np.iscomplex(matrix.data))
+        text_content = matrix_title(matrix.shape,is_complex)
+        for i in range(len(matrix.row)):
+            row_text = space_symbol * (3 + len_max_row - len(str(matrix.row[i] + base_num))) + str(matrix.row[i] + base_num)
+            col_text = space_symbol * (3 + len_max_row - len(str(matrix.col[i] + base_num))) + str(matrix.col[i] + base_num)
+            imag_formatted = space4_symbol +"{: .16E}".format(np.imag(matrix.data[i]))
+            real_formatted = space4_symbol +"{: .16E}".format(np.real(matrix.data[i]))
+            if is_complex:text_content += row_text + col_text + real_formatted + imag_formatted + '\n'
+            else:text_content += row_text + col_text + real_formatted + '\n'
+    else:
+        text_content = ''
+        for i in range(matrix.shape[0]):
+            if i:text_content += '\n'
+            for j in range(matrix.shape[1]):
+                text_content += "{: .8E}".format(np.real(matrix[i][j]))
+                if np.imag(matrix[i][j]) < 0:
+                    text_content += "{: .8E}".format(np.imag(matrix[i][j])) + 'j    '
+                else:
+                    text_content += '+' + "{: .8E}".format(np.imag(matrix[i][j]))[1:] + 'j    '
+        text_content += '\n'
     return text_content
 
 def control2text(tlist,amplitude):

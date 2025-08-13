@@ -1,5 +1,5 @@
 import numpy as np,time,copy,matplotlib.pyplot as plt,random,time 
-from . import localTools,read_write,propagation_method,fft_main,J_T_local,iter_info_manager
+from . import localTools,read_write,propagation_method,fft_main,J_T_local,iter_info_manager,Weyl
 from scipy.optimize import fmin_l_bfgs_b
 from functools import partial
 from pathlib import Path
@@ -344,19 +344,29 @@ class Optimization(Propagation):
 
     def set_target_states(self,target_states):
         self.target_states = target_states
+        self.JT = partial(J_T_local.JT_ss,self.target_states)
+        self.chis = partial(J_T_local.chis_ss,self.target_states)
+        self.JT_name = None
+        self.n_JT = 1
     
+    def set_gate_objectives(self,basis_states,gate):
+        self.JT = J_T_local.JT_gate(basis_states,gate)
+        self.chis = 0
+
     def set_observables(self,observables):
         self.observables = observables
 
-    def set_PE_objectives(self,basis,w = 0.5):
+    def set_PE_objectives(self,basis,lambda_U = 0.5):
         Bell_basis_states = [np.sqrt(0.5) * (self.initial_states[0] + self.initial_states[3]),
                              1j * np.sqrt(0.5) * (self.initial_states[0] - self.initial_states[3]),
                              1j * np.sqrt(0.5) * (self.initial_states[1] + self.initial_states[2]),
                              np.sqrt(0.5) * (self.initial_states[1] - self.initial_states[2])]
         self.initial_states = Bell_basis_states
-        self.F_PE,self.psi_T_analysis = J_T_local.JT_PE(Bell_basis_states,w)
-        self.chis_PE = J_T_local.chis_PE(basis,w)
-        self.functional_info = f'Functional name: PE\nFunctional parameters: w = {w}'
+        self.JT,self.psi_T_analysis = J_T_local.JT_PE(Bell_basis_states,lambda_U)
+        self.chis = J_T_local.chis_PE(basis,lambda_U)
+        self.functional_info = f'Functional name: PE\nFunctional parameters: lambda_U = {lambda_U}'
+        self.JT_name = ['JT','dist','delta_U']
+        self.n_JT = 3
 
     def config_opt(self,path,zero_base = True):
         path_Path = Path(path)
