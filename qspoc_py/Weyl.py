@@ -20,12 +20,14 @@ def state2gate(basis,states):
     basis = copy.deepcopy(basis)
     states = copy.deepcopy(states)
     state_size = basis[0].shape[0]
-    for i in range(4):
+    n_states = len(basis)
+    for i in range(n_states):
         basis[i] = np.conjugate(np.reshape(basis[i],state_size))
-        states[i] = np.conjugate(np.reshape(states[i],state_size))
-    U = np.zeros([4,4],dtype=np.complex128)
-    for j in range(4):
-        for i in range(4):
+        #states[i] = np.conjugate(np.reshape(states[i],state_size))
+        states[i] = np.reshape(states[i],state_size)
+    U = np.zeros([n_states,n_states],dtype=np.complex128)
+    for j in range(n_states):
+        for i in range(n_states):
             U[i,j] = np.inner(basis[i],states[j])
     return U
 

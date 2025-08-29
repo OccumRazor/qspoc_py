@@ -12,11 +12,10 @@ def tau(state,ref):
     except TypeError:
         return res
 
-def chis_taus(state,ref):
-    #return -tau(state,ref) * ref
-    return ref
+def chis_re(refs,states):
+    return refs
 
-def JT_re(states,refs):
+def JT_re(refs,states):
     if isinstance(states,list):
         val = 0
         for i in range(len(states)):
@@ -34,7 +33,6 @@ def J_T_abs(state,ref):
 def chis_tau(ref,state):
     return ref
 
-#def JT_tau(states,refs):
 def JT_tau(refs,states):
     if isinstance(states,list):
         val = 0
@@ -46,7 +44,6 @@ def JT_tau(refs,states):
         tau_val = tau(states,refs)
         return np.real(tau_val*np.conjugate(tau_val))
 
-#def chis_ss(states,refs):
 def chis_ss(refs,states):
     if isinstance(states,list):
         chis = []
@@ -59,7 +56,6 @@ def chis_ss(refs,states):
     else:
         return tau(states[i],refs[i]) * refs[i]
 
-#def JT_ss(states,refs):
 def JT_ss(refs,states):
     if isinstance(states,list):
         val = 0
@@ -136,6 +132,18 @@ def chis_gate(canonical_basis,lambda_U):
         return chis_out
     return chi_constructor
 
+def JT_PE_light(basis,psi_T,lambda_U):
+    U = Weyl.state2gate(basis,psi_T)
+    c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
+    Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+    #if c1+c2>=0.5 and c1-c2<=0.5 and c2+c3<=0.5:dist = 1
+    #if c1+c2<=0.5:dist = np.cos((c1+c2-0.5)/4*np.pi)**2
+    #if c1-c2>=0.5:dist = np.cos((c1-c2-0.5)/4*np.pi)**2
+    #if c2+c3>=0.5:dist = np.cos((c2+c3-0.5)/4*np.pi)**2
+    dist = Weyl.concurrence(c1,c2,c3)
+    g1,g2,g3 = Weyl.c2g(c1,c2,c3)
+    F_PE = (1-lambda_U) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + lambda_U * Delta_U
+    return [F_PE,dist,Delta_U,c1,c2,c3]
 
 def JT_PE(basis,lambda_U):
     if lambda_U < 0: lambda_U = 0
@@ -145,6 +153,7 @@ def JT_PE(basis,lambda_U):
         c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
         g1,g2,g3 = Weyl.c2g(c1,c2,c3)
         dist = Weyl.concurrence(c1,c2,c3)
+        #dist = JT_PE_C(c1,c2,c3)
         if lambda_U == 0:
             return [g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0,dist,1]
         Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
@@ -159,12 +168,14 @@ def JT_PE(basis,lambda_U):
         Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         U_text += f'\nNorm of U: {Delta_U}\n'
         dist = Weyl.concurrence(c1,c2,c3)
+        #dist = JT_PE_C(c1,c2,c3)
         U_text += f'Distance from boundary: {dist}\n'
         U_svd,s,Vh = svd(U)
         U = np.matmul(U_svd,Vh)
         U_cano = Weyl.from_magic(U)
         c1,c2,c3 = Weyl.c1c2c3(U_cano)
         dist = Weyl.concurrence(c1,c2,c3)
+        #dist = JT_PE_C(c1,c2,c3)
         U_text += f'Above is before svd reconstruction\nc1/pi: {c1} c2/pi: {c2} c3/pi: {c3}\n'
         U_text += matrix2text(U_cano,sparse=False)
         Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
@@ -172,6 +183,7 @@ def JT_PE(basis,lambda_U):
         U_text += f'Distance from boundary: {dist}\n'
         return U_text
     return JT,U_info
+
 
 def chis_PE(canonical_basis,lambda_U):
     if lambda_U < 0: lambda_U = 0
@@ -202,3 +214,85 @@ def chis_PE(canonical_basis,lambda_U):
         return chis_out
     return chi_constructor
 
+def chis_re_U(psi_tgt,basis,lambda_U):
+    n_states = len(basis)
+    basis_TP = copy.deepcopy(basis)
+    state_size = basis_TP[0].shape[0]
+    psi_tgt_TP = copy.deepcopy(psi_tgt)
+    for i in range(n_states):
+        psi_tgt_TP[i] = np.reshape(psi_tgt_TP[i],state_size)
+    for i in range(n_states):
+        basis_TP[i] = np.conjugate(np.reshape(basis_TP[i],state_size))
+    def chi_constructor(psi_T):
+        chis = []
+        psi_T_TP = copy.deepcopy(psi_T)
+        for i in range(n_states):
+            psi_T_TP[i] = np.reshape(psi_T_TP[i],state_size)
+        for i in range(n_states):
+            proj = np.zeros(shape=psi_T[i].shape,dtype = np.complex128)
+            for j in range(n_states):
+                proj += np.inner(basis_TP[j],psi_tgt_TP[i]) \
+                             * basis[j]
+            chis.append(proj / n_states)
+        if lambda_U == 0:
+            return chis
+        # unitarity corrections
+        chis_out = []
+        for i in range(n_states):
+            proj = np.zeros(shape=psi_T[i].shape,dtype = np.complex128)
+            for j in range(n_states):
+                proj += np.inner(basis_TP[j],psi_T_TP[i]) \
+                             * basis[j]
+            chis_out.append((1.0-lambda_U) * chis[i] + 0.25*lambda_U * proj)
+        return chis_out
+    return chi_constructor
+
+def JT_re_U(psi_tgt,basis,lambda_U):
+    n_states = len(basis)
+    def JT(psi_T):
+        U = Weyl.state2gate(basis,psi_T)
+        re_val = 0
+        for i in range(n_states):
+            tau_val = tau(psi_T[i],psi_tgt[i])
+            re_val += 2-np.real(tau_val)
+        re_val /= n_states
+        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+        JT_val = (1-lambda_U) * re_val + lambda_U * Delta_U
+        return [JT_val,re_val,lambda_U*Delta_U]
+    return JT
+
+def chis_gate_re(O,basis,lambda_U):
+    n_states = len(basis)
+    basis_TP = copy.deepcopy(basis)
+    state_size = basis_TP[0].shape[0]
+    for i in range(n_states):
+        basis_TP[i] = np.conjugate(np.reshape(basis_TP[i],state_size))
+    def chi_constructor(psi_T):
+        chis = psi_tgt
+        if lambda_U == 0:
+            return chis
+        psi_T_TP = copy.deepcopy(psi_T)
+        for i in range(n_states):
+            psi_T_TP[i] = np.reshape(psi_T_TP[i],state_size)
+        # unitarity corrections
+        chis_out = []
+        for i in range(n_states):
+            proj = np.zeros(shape=psi_T[i].shape,dtype = np.complex128)
+            for j in range(n_states):
+                proj += np.inner(basis_TP[j],psi_T_TP[i]) \
+                             * basis[j]
+            chis_out.append((1.0-lambda_U) * chis[i] + 0.25*lambda_U * proj)
+        return chis_out
+    return chi_constructor
+
+def JT_gate_re(O,basis,lambda_U):
+    n_states = len(basis)
+    def JT(psi_T):
+        U = Weyl.state2gate(basis,psi_T)
+        tau_val = tau(O.U)
+        re_val += n_states*2-np.real(tau_val)
+        re_val /= n_states
+        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+        JT_val = (1-lambda_U) * re_val + lambda_U * Delta_U
+        return [JT_val,re_val,lambda_U*Delta_U]
+    return JT

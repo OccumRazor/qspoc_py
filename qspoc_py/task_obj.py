@@ -321,14 +321,6 @@ class Propagation:
 class Optimization(Propagation):
     def __init__(self,Hamiltonian,tlist,prop_method,initial_states,pulse_name,pulse_options):
         super().__init__(Hamiltonian,tlist,prop_method,initial_states,pulse_name,pulse_options)
-        #self.oct_info = {
-        #    'oct_method':opt_method,
-        #    'JT_conv':JT_conv,
-        #    'delta_JT_conv':delta_JT_conv,
-        #    'iter_dat':iter_dat,
-        #    'iter_stop':iter_stop}
-        #self.target_states = None
-        #self.observables = None
     
     def custom_init(self,opt_method,JT_conv,delta_JT_conv,iter_dat,iter_stop):
         self.oct_info = {
@@ -342,12 +334,20 @@ class Optimization(Propagation):
         self.functional_info = None
         self.psi_T_analysis = None
 
-    def set_target_states(self,target_states):
+    def set_target_states(self,target_states,lambda_U=0):
         self.target_states = target_states
-        self.JT = partial(J_T_local.JT_ss,self.target_states)
-        self.chis = partial(J_T_local.chis_ss,self.target_states)
-        self.JT_name = None
-        self.n_JT = 1
+        if lambda_U:# or not lambda_U:
+            self.JT = J_T_local.JT_re_U(self.target_states,self.initial_states,lambda_U)
+            self.chis = J_T_local.chis_re_U(self.target_states,self.initial_states,lambda_U)
+            self.JT_name = ['JT','tau_re','delta_U']
+            self.n_JT = 3
+        else:
+            #self.JT = partial(J_T_local.JT_ss,self.target_states)
+            #self.chis = partial(J_T_local.chis_ss,self.target_states)
+            self.JT = partial(J_T_local.JT_re,self.target_states)
+            self.chis = partial(J_T_local.chis_re,self.target_states)
+            self.JT_name = None
+            self.n_JT = 1
     
     def set_gate_objectives(self,basis_states,gate):
         self.JT = J_T_local.JT_gate(basis_states,gate)
@@ -500,6 +500,8 @@ class Optimization(Propagation):
         opt_result.store_initial_controls()
         JT_iter = []
         for iters in range(self.oct_info['iter_stop']):
+            #if iters > 0 and iters % 100 == 0:
+                #self.change_lambda_a(0.5)
             tic_0 = time.time()
             psi_t = self.propagate(False,True)
             psi_T = psi_t[-1]

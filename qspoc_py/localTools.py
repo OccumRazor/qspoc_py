@@ -166,6 +166,7 @@ def abs_wrapper(original_func):
         return np.abs(original_func(t))
     return new_func
 
+'''
 def control_generator_random(n_controls, guess_amps, endTime,positive = False):
     n_freq = 10
     control_args = []
@@ -186,8 +187,8 @@ def control_generator_random(n_controls, guess_amps, endTime,positive = False):
         else:
             control_args.append({"fit_func": cubicSpline_fit})
     return control_args
-
 '''
+
 def control_generator_random(n_controls, guess_amps, endTime,positive = False):
     num_points = 15
     control_args = []
@@ -205,7 +206,6 @@ def control_generator_random(n_controls, guess_amps, endTime,positive = False):
         else:
             control_args.append({"fit_func": cubicSpline_fit})
     return control_args
-'''
 
 sq_dict = {
     "I": [[1, 0], [0, 1]],
