@@ -355,7 +355,41 @@ def array_bounds(tlist,pulse_options,Hamiltonian,tlist_long):
                 ub[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_max'] * nt
                 lb[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_min'] * nt
                 x_i += 1
-    bounds = [(lbi,ubi) for lbi,ubi in zip(lb,ub)]
-    return bounds
+    return [(lbi,ubi) for lbi,ubi in zip(lb,ub)]
 
+def gen_Crab_parameters(n_params,n_pulses):
+    return [random.random() for _ in range(n_pulses*n_params)]
 
+def Crab_bounds(n_params,n_pulses):
+    ub = []
+    lb = []
+    for _ in range(n_pulses*int(n_params/3)):
+        ub += [10,10,1]
+        lb += [-10,-10,-1]
+    return [(lbi,ubi) for lbi,ubi in zip(lb,ub)]
+
+def Crab_pulse_i(T,tlist_long,params_sg):
+    pulse = np.zeros(len(tlist_long))
+    for i in range(len(params_sg)):
+        vk = 2 * np.pi * i * (1 + params_sg[i][0]) / T
+        pulse += params_sg[i][1]*np.cos(tlist_long*vk) + params_sg[i][2]*np.sin(tlist_long*vk)
+    return pulse + 1
+
+def Crab_pulse(params,n_params,n_pulses,c0j,tlist,pulse_options,Hamiltonian,tlist_long):
+    assert(n_pulses * n_params == len(params))
+    params_reshaped = [params[i*n_params:(i+1)*n_params] for i in range(n_pulses)]
+    for i in range(n_pulses):
+        params_reshaped[i] = np.reshape(params_reshaped[i],(int(n_params/3),3))
+    if len(tlist) == 2:T = tlist[0]
+    else:T = tlist[1]
+    pulse_id = 0
+    new_controls = {}
+    for H_i in Hamiltonian:
+        if isinstance(H_i,list):
+            pulse_i = H_i[1]
+            if pulse_options[pulse_i]['oct_lambda_a']:
+                new_controls[pulse_i] = Crab_pulse_i(T,tlist_long,params_reshaped[pulse_id]) * c0j[pulse_i]['args']["fit_func"](tlist_long)
+                pulse_id += 1
+            else:
+                new_controls[pulse_i] = pulse_options[pulse_i]['args']["fit_func"](tlist_long)
+    return new_controls

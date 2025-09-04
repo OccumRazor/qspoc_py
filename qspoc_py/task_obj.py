@@ -1,6 +1,5 @@
 import numpy as np,time,copy,matplotlib.pyplot as plt,random,time 
 from . import localTools,read_write,propagation_method,fft_main,J_T_local,iter_info_manager,Weyl
-from scipy.optimize import fmin_l_bfgs_b
 from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
@@ -333,12 +332,15 @@ class Optimization(Propagation):
         self.observables = None
         self.functional_info = None
         self.psi_T_analysis = None
+        self.n_JT = 1
+        self.JT_name = None
 
     def set_target_states(self,target_states,lambda_U=0):
         self.target_states = target_states
-        if lambda_U:# or not lambda_U:
-            self.JT = J_T_local.JT_re_U(self.target_states,self.initial_states,lambda_U)
-            self.chis = J_T_local.chis_re_U(self.target_states,self.initial_states,lambda_U)
+        if lambda_U:
+            self.JT = J_T_local.JT_Phi3(self.target_states,self.initial_states,lambda_U)
+            self.chis = J_T_local.chis_Phi3(self.target_states,self.initial_states,lambda_U)
+            self.functional_info = f'Functional name: PE\nFunctional parameters: lambda_U = {lambda_U}'
             self.JT_name = ['JT','tau_re','delta_U']
             self.n_JT = 3
         else:
@@ -346,7 +348,6 @@ class Optimization(Propagation):
             #self.chis = partial(J_T_local.chis_ss,self.target_states)
             self.JT = partial(J_T_local.JT_re,self.target_states)
             self.chis = partial(J_T_local.chis_re,self.target_states)
-            self.JT_name = None
             self.n_JT = 1
     
     def set_gate_objectives(self,basis_states,gate):
@@ -580,6 +581,7 @@ class Optimization(Propagation):
         return grad
 
     def GRAPE_BFGS(self,runfolder):
+        from scipy.optimize import fmin_l_bfgs_b
         def func(x,approx_grad,order,*args):
             #self.pulse_options = localTools.array_like_control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
             new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
@@ -610,8 +612,48 @@ class Optimization(Propagation):
             scipy_monitor.log_psi_T_analysis(self.psi_T_analysis)
         return scipy_monitor
     
-    def optimize(self,runfolder = None, monotonic = False):
+    def Nelder_Mead(self,runfolder,options):
+        if 'n_params' in options.keys():
+            n_params = options['n_params']
+        else:
+            n_params = 15
+        from scipy.optimize import minimize
+        method = 'Nelder-Mead'
+        def func(x):
+            new_controls = localTools.Crab_pulse(x,n_params,n_pulses,c0j,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+            self.update_control(new_controls)
+            psi_T = self.propagate()
+            JT_eval = J_T_local.reverse_GME_concurrence(psi_T)
+            if not isinstance(JT_eval,list):JT_eval = [JT_eval]
+            return JT_eval,psi_T
+        if runfolder:
+            self.config_opt(runfolder)
+        n_pulses = 0
+        for H_i in self.Hamiltonian:
+            if isinstance(H_i,list):
+                pulse_i = H_i[1]
+                if self.pulse_options[pulse_i]['oct_lambda_a']:
+                    n_pulses += 1
+        c0j = copy.deepcopy(self.pulse_options)
+        x0 = localTools.gen_Crab_parameters(n_params,n_pulses)
+        log_options = iter_info_manager.Opt_result_options(False,False,'last')
+        scipy_monitor = iter_info_manager.Monitor_Nelder_Mean(self.oct_info['iter_stop'],self.tlist,self.tlist_long,self.Hamiltonian,self.pulse_options,log_options,runfolder,self.n_JT,self.JT_name,self.functional_info,func,x0,c0j,n_params,n_pulses)
+        scipy_monitor.store_initial_controls()
+        options = {'maxiter':self.oct_info['iter_stop'] * (n_params + 1),'maxfev':self.oct_info['iter_stop'] * (n_params + 1)}
+        bounds = localTools.Crab_bounds(n_params,n_pulses)
+        result = minimize(scipy_monitor.cost_function,x0,method=method,bounds = bounds,
+                              callback=scipy_monitor.callback,options=options)
+        new_controls = localTools.Crab_pulse(result.x,n_params,n_pulses,c0j,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+        self.update_control(new_controls)
+        scipy_monitor.log_finish_info(result)
+        if self.psi_T_analysis:
+            scipy_monitor.log_psi_T_analysis(self.psi_T_analysis)
+        return scipy_monitor
+        
+
+    def optimize(self,runfolder = None, monotonic = False,options = None):
         if self.oct_info['oct_method'] == 'Krotov':opt_result = self.Krotov_optimization(runfolder,monotonic)
         if self.oct_info['oct_method'] == 'GRAPE':opt_result = self.GRAPE(runfolder,monotonic)
         if self.oct_info['oct_method'] == 'GRAPE-BFGS':opt_result = self.GRAPE_BFGS(runfolder)
+        if self.oct_info['oct_method'] == 'Nelder-Mead':opt_result = self.Nelder_Mead(runfolder,options=options)
         return opt_result

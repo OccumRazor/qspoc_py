@@ -306,3 +306,58 @@ class Monitor(Opt_result):
             report_f.write(f'Number of functional calls: {d['funcalls']}\n')
             report_f.write(f'Number of iterations: {d['nit']}\n')
         return 0
+
+class Monitor_Nelder_Mean(Opt_result):
+    def __init__(self,iter_stop,tlist,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,functional_info,func,x0,c0j,n_params,n_pulses):
+        super().__init__(iter_stop,tlist_long,Hamiltonian,pulse_options,options,runfolder,n_JT,JT_names,0,functional_info)
+        self.iter_stop = iter_stop
+        self.last_control = x0
+        self.tlist = tlist
+        self.func = func
+        self.iters = 0
+        path_Path = Path(runfolder)
+        path_Path.mkdir(exist_ok=True,parents=True)
+        self.tlist_long = tlist_long
+        self.JT_new = None
+        self.t_log = [time.time()]
+        self.n_params = n_params
+        self.n_pulses = n_pulses
+        self.c0j = c0j
+        self.__initial_run()
+
+    def __initial_run(self):
+        self.JT_new,psi_T = self.func(self.last_control)
+        self.psi_T = psi_T
+        self.t_log.append(time.time())
+        dt = self.t_log[-1] - self.t_log[-2]
+        self.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
+        self.iters += 1
+
+    def cost_function(self,x):
+        self.JT_new,psi_T = self.func(x)
+        self.psi_T = psi_T
+        if isinstance(self.JT_new,list):JT = self.JT_new[0]
+        else:JT = self.JT_new
+        return JT
+
+    def callback(self,x):
+        ga_int = sum(np.abs(x-self.last_control)) * (self.tlist_long[1] - self.tlist_long[0])
+        self.last_control = x
+        self.t_log.append(time.time())
+        dt = self.t_log[-1] - self.t_log[-2]
+        self.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1][0],ga_int=ga_int)
+        new_controls = localTools.Crab_pulse(x,self.n_params,self.n_pulses,self.c0j,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+        self.store_control(new_controls)
+        self.iters += 1
+
+    def log_finish_info(self,result):
+        new_controls = localTools.Crab_pulse(result.x,self.n_params,self.n_pulses,self.c0j,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
+        self.store_control(new_controls)
+        with open(self.runfolder+'finish_report.dat','w') as report_f:
+            report_f.write(f'Nelder-Mead Optimization parameters:\n')
+            report_f.write(f'Number of parameters for each control sequence: {self.n_params}\n')
+            report_f.write(f'Maximal number of functiona evaluation: {self.iter_stop * (self.n_params + 1)}\n')
+            report_f.write(f'Nelder-Mead Optimization finishes with:\n')
+            for key in result.keys():
+                report_f.write(f'{key} ({type(result[key])}): {result[key]}\n')
+        return 0

@@ -261,38 +261,63 @@ def JT_re_U(psi_tgt,basis,lambda_U):
         return [JT_val,re_val,lambda_U*Delta_U]
     return JT
 
-def chis_gate_re(O,basis,lambda_U):
+
+def chis_Phi3(psi_tgt,basis,lambda_U):
+    # Phi3 fromhttps://doi.org/10.1016/j.jmr.2004.11.004
     n_states = len(basis)
     basis_TP = copy.deepcopy(basis)
+    psi_tgt_TP = [0] * n_states
     state_size = basis_TP[0].shape[0]
+    for i in range(n_states):
+        psi_tgt_TP[i] = np.conjugate(np.reshape(psi_tgt[i],state_size))
     for i in range(n_states):
         basis_TP[i] = np.conjugate(np.reshape(basis_TP[i],state_size))
     def chi_constructor(psi_T):
-        chis = psi_tgt
-        if lambda_U == 0:
-            return chis
+        chis_out = []
         psi_T_TP = copy.deepcopy(psi_T)
         for i in range(n_states):
             psi_T_TP[i] = np.reshape(psi_T_TP[i],state_size)
-        # unitarity corrections
-        chis_out = []
         for i in range(n_states):
             proj = np.zeros(shape=psi_T[i].shape,dtype = np.complex128)
             for j in range(n_states):
                 proj += np.inner(basis_TP[j],psi_T_TP[i]) \
                              * basis[j]
-            chis_out.append((1.0-lambda_U) * chis[i] + 0.25*lambda_U * proj)
+            chis_out.append(lambda_U * proj / n_states)
+        for i in range(n_states):
+            proj = np.zeros(shape=psi_T[i].shape,dtype = np.complex128)
+            for j in range(n_states):
+                proj += np.inner(psi_tgt_TP[j],psi_T_TP[i]) \
+                             * psi_tgt[j]
+            chis_out[i] += (1 - lambda_U) * proj / n_states
         return chis_out
     return chi_constructor
 
-def JT_gate_re(O,basis,lambda_U):
+def JT_Phi3(psi_tgt,basis,lambda_U):
+    # Phi3 fromhttps://doi.org/10.1016/j.jmr.2004.11.004
     n_states = len(basis)
+    O = Weyl.state2gate(basis,psi_tgt)
     def JT(psi_T):
         U = Weyl.state2gate(basis,psi_T)
-        tau_val = tau(O.U)
-        re_val += n_states*2-np.real(tau_val)
-        re_val /= n_states
-        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
-        JT_val = (1-lambda_U) * re_val + lambda_U * Delta_U
-        return [JT_val,re_val,lambda_U*Delta_U]
+        tau_val = np.trace(np.matmul(np.conjugate(np.transpose(O)),U))
+        re_val = np.real(tau_val) / n_states
+        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / n_states
+        JT_val = lambda_U * Delta_U + (1 - lambda_U) * (1 - re_val)
+        return [JT_val,re_val,Delta_U]
     return JT
+
+def GME_concurrence(psi_T):
+    if isinstance(psi_T,list):psi_T = psi_T[0]
+    from .GME_Concurrence import genPartition,partialTrace
+    num_qubit = int(np.log2(len(psi_T)))
+    idle=genPartition(num_qubit)
+    iGME=[]
+    for j in range(len(idle)):
+        pdm=partialTrace(psi_T,idle[j])
+        temp=2*(1-np.trace(np.matmul(pdm,pdm)))
+        #temp=trace(matmul(pdm,pdm))
+        if abs(temp.imag)>1e-7:print('imaginary part might exist')
+        iGME.append(np.sqrt(temp.real))
+    return min(iGME)
+
+def reverse_GME_concurrence(psi_T):
+    return 1 - GME_concurrence(psi_T)
