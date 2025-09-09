@@ -366,7 +366,7 @@ class Optimization(Propagation):
         self.JT,self.psi_T_analysis = J_T_local.JT_PE(Bell_basis_states,lambda_U)
         self.chis = J_T_local.chis_PE(basis,lambda_U)
         self.functional_info = f'Functional name: PE\nFunctional parameters: lambda_U = {lambda_U}'
-        self.JT_name = ['JT','dist','delta_U']
+        self.JT_name = ['JT','conc','delta_U']
         self.n_JT = 3
 
     def config_opt(self,path,zero_base = True):

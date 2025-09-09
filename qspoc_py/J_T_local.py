@@ -136,14 +136,10 @@ def JT_PE_light(basis,psi_T,lambda_U):
     U = Weyl.state2gate(basis,psi_T)
     c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
     Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
-    #if c1+c2>=0.5 and c1-c2<=0.5 and c2+c3<=0.5:dist = 1
-    #if c1+c2<=0.5:dist = np.cos((c1+c2-0.5)/4*np.pi)**2
-    #if c1-c2>=0.5:dist = np.cos((c1-c2-0.5)/4*np.pi)**2
-    #if c2+c3>=0.5:dist = np.cos((c2+c3-0.5)/4*np.pi)**2
-    dist = Weyl.concurrence(c1,c2,c3)
+    conc = Weyl.concurrence(c1,c2,c3)
     g1,g2,g3 = Weyl.c2g(c1,c2,c3)
     F_PE = (1-lambda_U) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + lambda_U * Delta_U
-    return [F_PE,dist,Delta_U,c1,c2,c3]
+    return [F_PE,conc,Delta_U,c1,c2,c3]
 
 def JT_PE(basis,lambda_U):
     if lambda_U < 0: lambda_U = 0
@@ -152,13 +148,12 @@ def JT_PE(basis,lambda_U):
         U = Weyl.state2gate(basis,psi_T)
         c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
         g1,g2,g3 = Weyl.c2g(c1,c2,c3)
-        dist = Weyl.concurrence(c1,c2,c3)
-        #dist = JT_PE_C(c1,c2,c3)
+        conc = Weyl.concurrence(c1,c2,c3)
         if lambda_U == 0:
-            return [g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0,dist,1]
+            return [g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0,conc,1]
         Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         F_PE = (1-lambda_U) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + lambda_U * Delta_U
-        return [F_PE,dist,lambda_U*Delta_U]
+        return [F_PE,conc,lambda_U*Delta_U]
     def U_info(psi_T):
         U = Weyl.state2gate(basis,psi_T)
         U_cano = Weyl.from_magic(U)
@@ -167,20 +162,18 @@ def JT_PE(basis,lambda_U):
         U_text += matrix2text(U_cano,sparse=False)
         Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         U_text += f'\nNorm of U: {Delta_U}\n'
-        dist = Weyl.concurrence(c1,c2,c3)
-        #dist = JT_PE_C(c1,c2,c3)
-        U_text += f'Distance from boundary: {dist}\n'
+        conc = Weyl.concurrence(c1,c2,c3)
+        U_text += f'Gate concurrence: {conc}\n'
         U_svd,s,Vh = svd(U)
         U = np.matmul(U_svd,Vh)
         U_cano = Weyl.from_magic(U)
         c1,c2,c3 = Weyl.c1c2c3(U_cano)
-        dist = Weyl.concurrence(c1,c2,c3)
-        #dist = JT_PE_C(c1,c2,c3)
+        conc = Weyl.concurrence(c1,c2,c3)
         U_text += f'Above is before svd reconstruction\nc1/pi: {c1} c2/pi: {c2} c3/pi: {c3}\n'
         U_text += matrix2text(U_cano,sparse=False)
         Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
         U_text += f'\nNorm of U: {Delta_U}\n'
-        U_text += f'Distance from boundary: {dist}\n'
+        U_text += f'Gate concurrence: {conc}\n'
         return U_text
     return JT,U_info
 
