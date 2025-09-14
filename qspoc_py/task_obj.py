@@ -427,11 +427,6 @@ class Optimization(Propagation):
                 if isinstance(H_i,list):
                     if self.pulse_options[H_i[1]]['oct_lambda_a'] and 'fft_threshold' in self.pulse_options[H_i[1]].keys():
                         new_controls[H_i[1]] = fft_main.fft_filter(self.tlist_long,new_controls[H_i[1]],self.pulse_options[H_i[1]]['fft_threshold'])
-            #if ga_int > ga_bound:
-                #print(f'ga_int ({ga_int}) > {ga_bound}, new_controls not updated, break.')
-                #self.plot_pulses(new_controls)
-                #psi_T = psi_T_last_step
-                #break
             psi_T_last_step = copy.deepcopy(psi_T)
             JT_new = self.JT(psi_T)
             if not isinstance(JT_new,list):JT_new = [JT_new]
@@ -440,14 +435,14 @@ class Optimization(Propagation):
                 psi_T = copy.deepcopy(psi_T_last_step)
                 self.change_lambda_a(2)
             else:
-                #psi_T_last_step = copy.deepcopy(psi_T)
                 opt_result.store_psi_T(psi_T)
                 opt_result.log_iter_info(iters,JT_new,tac-tic,JT_iter[-1],ga_int)
                 JT_iter.append(JT_new[0])
                 self.update_control(new_controls)
                 opt_result.store_control(new_controls)
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
-                    opt_result.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
+                    #opt_result.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
+                    opt_result.log_stop_info(JT_new,self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
         if self.psi_T_analysis:
             opt_result.log_psi_T_analysis(self.psi_T_analysis)
@@ -501,8 +496,6 @@ class Optimization(Propagation):
         opt_result.store_initial_controls()
         JT_iter = []
         for iters in range(self.oct_info['iter_stop']):
-            #if iters > 0 and iters % 100 == 0:
-                #self.change_lambda_a(0.5)
             tic_0 = time.time()
             psi_t = self.propagate(False,True)
             psi_T = psi_t[-1]
@@ -516,11 +509,9 @@ class Optimization(Propagation):
             opt_result.store_psi_T(psi_T)
             if iters:
                 monotonicity_break = JT_iter[-1] > JT_new[0] if oct_direction else JT_iter[-1] < JT_new[0]
-                #if JT_iter[-1] > JT_new[0] and monotonic:
                 if monotonicity_break and monotonic:
                     opt_result.log_break_info(JT_new,JT_iter[-1],iters,ga_int,ga_bound = 1e10)
                     self.change_lambda_a(2)
-                    #JT_iter.append(JT_new[0])
             tic_1 = time.time()
             lambda_t = self.propagate(True,True,prop_options={'initial_states':self.chis(psi_T)})
             new_pulses,ga_int = self.GRAPE_update_pulse(psi_t,lambda_t,self.Hamiltonian,self.tlist_long,self.n_states,self.pulse_options)
@@ -583,7 +574,6 @@ class Optimization(Propagation):
     def GRAPE_BFGS(self,runfolder):
         from scipy.optimize import fmin_l_bfgs_b
         def func(x,approx_grad,order,*args):
-            #self.pulse_options = localTools.array_like_control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
             new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
             self.update_control(new_controls)
             psi_t = self.propagate(store_states=True)

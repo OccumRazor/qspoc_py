@@ -320,7 +320,7 @@ def array2control(x,tlist,pulse_options,Hamiltonian,tlist_long):
                     new_controls[H_i[1]][i]=x[x_i][i] * pulse_options[H_i[1]]['update_shape'](tlist_long[i])
                 x_i += 1
             else:
-                new_controls[H_i][1] = pulse_options[H_i[1]]['args']["fit_func"](tlist_long)
+                new_controls[H_i[1]] = pulse_options[H_i[1]]['args']["fit_func"](tlist_long)
     return new_controls
 
 def control2array(tlist,pulse_options,Hamiltonian,tlist_long):

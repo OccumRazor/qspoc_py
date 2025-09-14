@@ -27,9 +27,6 @@ class Iter_info:
         if self.runfolder:
             self.out_stream = open(runfolder + 'oct_iters.dat','w')
         message = f'#{' ' * (self.iter_str_len - 3)}iter{' ' * 4}'
-        #for JT_name in self.JT_names:
-        #    message += JT_name + ' ' * (14 - len(JT_name))
-        #message += f' dJT{' ' * 11}ga_int{' ' * 8}dt'
         for JT_name in self.JT_names:
             message += JT_name + ' ' * (18 - len(JT_name))
         message += f' dJT{' ' * 15}ga_int{' ' * 12}dt'
@@ -54,8 +51,6 @@ class Iter_info:
         if dJT<0:dJT_sign_placeholder = ''
         if not ga_int:ga_int = 0.0
         message = f'{' ' * (self.iter_str_len-len(str(iters))+2)}{iters}{' ' * 4}'
-        #for i in range(self.n_JT): message += f'{JT_new[i]:.8f}{' ' * 4}'
-        #message += f'{dJT:.8f}{' ' * 4}{ga_int:.8f}{' ' * 4}{dt:.2f}'
         for i in range(self.n_JT): message += f'{JT_new[i]:.8e}{' ' * 4}'
         message += f'{dJT_sign_placeholder}{dJT:.8e}{' ' * 4}{ga_int:.8e}{' ' * 4}{dt:.2f}'
         if self.runfolder:

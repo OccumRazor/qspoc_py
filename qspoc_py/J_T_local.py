@@ -132,10 +132,13 @@ def chis_gate(canonical_basis,lambda_U):
         return chis_out
     return chi_constructor
 
+def unitary_norm(U):
+    return 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / len(U)
+
 def JT_PE_light(basis,psi_T,lambda_U):
     U = Weyl.state2gate(basis,psi_T)
     c1,c2,c3 = Weyl.c1c2c3(Weyl.from_magic(U))
-    Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+    Delta_U = unitary_norm(U)
     conc = Weyl.concurrence(c1,c2,c3)
     g1,g2,g3 = Weyl.c2g(c1,c2,c3)
     F_PE = (1-lambda_U) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + lambda_U * Delta_U
@@ -151,7 +154,7 @@ def JT_PE(basis,lambda_U):
         conc = Weyl.concurrence(c1,c2,c3)
         if lambda_U == 0:
             return [g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0,conc,1]
-        Delta_U = 1 - np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+        Delta_U = unitary_norm(U)
         F_PE = (1-lambda_U) * (g3 * np.sqrt(g1 ** 2 + g2 ** 2) - g1 + 0.0) + lambda_U * Delta_U
         return [F_PE,conc,lambda_U*Delta_U]
     def U_info(psi_T):
@@ -160,7 +163,7 @@ def JT_PE(basis,lambda_U):
         c1,c2,c3 = Weyl.c1c2c3(U_cano)
         U_text = f'c1/pi: {c1} c2/pi: {c2} c3/pi: {c3}\n'
         U_text += matrix2text(U_cano,sparse=False)
-        Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+        Delta_U = unitary_norm(U)
         U_text += f'\nNorm of U: {Delta_U}\n'
         conc = Weyl.concurrence(c1,c2,c3)
         U_text += f'Gate concurrence: {conc}\n'
@@ -171,7 +174,7 @@ def JT_PE(basis,lambda_U):
         conc = Weyl.concurrence(c1,c2,c3)
         U_text += f'Above is before svd reconstruction\nc1/pi: {c1} c2/pi: {c2} c3/pi: {c3}\n'
         U_text += matrix2text(U_cano,sparse=False)
-        Delta_U = np.real(np.trace(np.matmul(np.conjugate(np.transpose(U)),U))) / 4
+        Delta_U = unitary_norm(U)
         U_text += f'\nNorm of U: {Delta_U}\n'
         U_text += f'Gate concurrence: {conc}\n'
         return U_text
