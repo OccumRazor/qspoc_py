@@ -1,7 +1,27 @@
 import numpy as np,copy
 from .read_write import matrix2text
-from . import Weyl
+from . import Weyl,localTools
 from scipy.linalg import svd
+from scipy.linalg import expm,sqrtm
+
+def fidelity_mixed_loop(rho,sigma):
+    is_vec = [localTools.isinstanceVector(rho),localTools.isinstanceVector(sigma)]
+    if is_vec[0]:
+        rho = localTools.densityMatrix(rho)
+    if is_vec[1]:
+        sigma = localTools.densityMatrix(sigma)
+    sqrt_rho = sqrtm(rho)
+    return np.trace(sqrtm(np.matmul(np.matmul(sqrt_rho,sigma),sqrt_rho))) ** 2
+
+def fidelity_mixed(rho,sigma):
+    if isinstance(rho,list):
+        assert len(rho) == len(sigma)
+        f0 = 0
+        for i in range(len(rho)):
+            f0 += fidelity_mixed_loop(rho[i],sigma[i])/len(rho)
+    else:
+        f0 = fidelity_mixed_loop(rho,sigma)
+    return np.real(f0)
 
 def tau(state,ref):
     res=0j
