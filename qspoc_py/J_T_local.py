@@ -187,16 +187,6 @@ def JT_PE(basis,lambda_U):
         U_text += f'\nNorm of U: {Delta_U}\n'
         conc = Weyl.concurrence(c1,c2,c3)
         U_text += f'Gate concurrence: {conc}\n'
-        U_svd,s,Vh = svd(U)
-        U = np.matmul(U_svd,Vh)
-        U_cano = Weyl.from_magic(U)
-        c1,c2,c3 = Weyl.c1c2c3(U_cano)
-        conc = Weyl.concurrence(c1,c2,c3)
-        U_text += f'Above is before svd reconstruction\nc1/pi: {c1} c2/pi: {c2} c3/pi: {c3}\n'
-        U_text += matrix2text(U_cano,sparse=False)
-        Delta_U = unitary_norm(U)
-        U_text += f'\nNorm of U: {Delta_U}\n'
-        U_text += f'Gate concurrence: {conc}\n'
         return U_text
     return JT,U_info
 

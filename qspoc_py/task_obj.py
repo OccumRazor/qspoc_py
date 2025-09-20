@@ -127,7 +127,7 @@ class Propagation:
         self.c_ops = None
         self.shape_function()
         self.sparsity = sparsity(self.Hamiltonian)
-        if self.sparsity > 0.85:self.Hamiltonian = sparse_Ham(self.Hamiltonian)
+        if self.sparsity > 0.85 and prop_method != 'expm':self.Hamiltonian = sparse_Ham(self.Hamiltonian)
         self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options)
     
     def add_dissipator(self,c_ops):
@@ -173,7 +173,10 @@ class Propagation:
         psi_0 = copy.deepcopy(psi_0)
         Ht = H_t(self.Hamiltonian,t,self.pulse_options)
         for i in range(self.n_states):
-            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
+            if self.prop_method == 'cheby':
+                psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
+            if self.prop_method == 'expm':
+                psi_0[i] = propagation_method.Matrix_Exponential(Ht,psi_0[i],dt)
         return psi_0
 
     def propagate_sg_update(self,dt,t,psi_0,chis):

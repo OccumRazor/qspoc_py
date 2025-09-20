@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np,copy
 from scipy.special import jv,j0,j1
 from scipy.sparse import csr_matrix
 from scipy.linalg import expm,ishermitian
@@ -30,11 +30,6 @@ def Bessel_function(num,k,lower_bound=1e-17):
         coefficient += coe_amp
     return coefficient
 
-def expm(herm_mat,initial_state,dt,backwards = False):
-    if isinstance(herm_mat,list):herm_mat=np.array(herm_mat)
-    if backwards: Ut = expm(1j * herm_mat * dt)
-    else: Ut = expm(-1j * herm_mat * dt)
-    return Ut.dot(initial_state)
 
 def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,backwards = False):
     '''
@@ -65,6 +60,21 @@ def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,backwards = False):
         phi1 = phi2
     final_state *= phase_factor
     return final_state
+
+
+
+def Matrix_Exponential(herm_mat,initial_state,dt,backwards = False):
+    if isinstance(herm_mat,(list,csr_matrix)):ipt_mat=copy.deepcopy(np.array(herm_mat))
+    else:ipt_mat = copy.deepcopy(herm_mat)
+    if backwards: Ut = expm(1j * ipt_mat * dt)
+    else: 
+        Ut = expm(-1j * ipt_mat * dt)
+    return Ut.dot(initial_state)
+'''
+def Matrix_Exponential(herm_mat,initial_state):
+    eih = expm(-1j*herm_mat)
+    return eih.dot(initial_state)
+'''
 
 def Newton(initial_state,backwards = False):
     return 0
