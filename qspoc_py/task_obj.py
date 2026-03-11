@@ -56,9 +56,12 @@ def E_min_max(Hamiltonian,tlist,pulse_options):
         p_0 = Hamiltonian[0][1](tlist,pulse_options[Hamiltonian[0][1]]['args'])
         H_min = min(p_0) * Hamiltonian[0][0]
         H_max = max(p_0) * Hamiltonian[0][0]
+        ndim = len(Hamiltonian[0][0])
     else:
         H_min = Hamiltonian[0]
         H_max = Hamiltonian[0]
+        #ndim = len(Hamiltonian[0])
+        ndim = Hamiltonian[0].shape[0]
     for H_i in Hamiltonian[1:]:
         if isinstance(H_i,list):
             p_i = H_i[1](tlist,pulse_options[H_i[1]]['args'])
@@ -67,8 +70,12 @@ def E_min_max(Hamiltonian,tlist,pulse_options):
         else:
             H_min += H_i
             H_max += H_i
-    eig_vals_0 = eigsh(H_min,return_eigenvectors=False)
-    eig_vals_1 = eigsh(H_max,return_eigenvectors=False)
+    if ndim <= 4:
+        eig_vals_0,_ = np.linalg.eigh(H_min)
+        eig_vals_1,_ = np.linalg.eigh(H_max)    
+    else:
+        eig_vals_0 = eigsh(H_min,return_eigenvectors=False)
+        eig_vals_1 = eigsh(H_max,return_eigenvectors=False)
     E_min = min([min(eig_vals_0),min(eig_vals_1)])
     E_max = max([max(eig_vals_0),max(eig_vals_1)])
     return E_max,E_min
