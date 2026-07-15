@@ -38,7 +38,7 @@ def Arnoldi(A,dt,v_s,m_max):
 def Arnoldi(Hess,q,m,psi,H,dt:float,extended=True,tol=1e-15):
     dim_hess = m
     if extended: dim_hess += 1
-    assert np.shape(Hess,0) >= dim_hess and np.shape(Hess,1) >= dim_hess
+    assert np.shape(Hess)[0] >= dim_hess and np.shape(Hess)[1] >= dim_hess
     assert len(q) >= m + 1
     q[:,0] = psi
     for i in range(m):
