@@ -37,6 +37,7 @@ def Arnoldi(A,dt,v_s,m_max):
 
 def Arnoldi(Hess,q,m,psi,H,dt:float,extended=True,tol=1e-15):
     dim_hess = m
+    Hess *= 0
     if extended: dim_hess += 1
     assert np.shape(Hess)[0] >= dim_hess and np.shape(Hess)[1] >= dim_hess
     assert np.shape(q)[1] >= m + 1
@@ -53,6 +54,8 @@ def Arnoldi(Hess,q,m,psi,H,dt:float,extended=True,tol=1e-15):
                 m = j
                 break
             q[:,i+1] *= 1/h
+    print(Hess)
+    print(q)
     return m
 
 
@@ -76,7 +79,7 @@ def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
 
     '''
 
-    j_min = m
+    j_min = m - 1
     j_max = m
     if accumulate:
         j_min = 0
@@ -85,7 +88,7 @@ def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
         eigenvals = np.zeros(m,dtype = np.complex128)
     
     offset = 0
-    for j in range(j_min,j_max+1):
+    for j in range(j_min,j_max):
         if j == 0:
             eigenvals[0] = Hess[0,0]
         elif j == 1:
@@ -97,7 +100,7 @@ def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
             eigenvals[offset] = 0.5*(a+d-s)
             eigenvals[offset+1] = 0.5*(a+d+s)
         else:
-            eigenvals[offset:offset+j] = np.linalg.eigvals(Hess[:j,:j])
-        offset += j
+            eigenvals[offset:offset+j+1] = np.linalg.eigvals(Hess[:j+1,:j+1])
+        offset += j + 1
 
-    return eigenvals
+    return np.sort(eigenvals)
