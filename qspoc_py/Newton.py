@@ -16,7 +16,6 @@ def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
         eigenvals = np.zeros(int(0.5*m*(m+1)),dtype = np.complex128)
     else:
         eigenvals = np.zeros(m,dtype = np.complex128)
-    
     offset = 0
     for j in range(j_min,j_max):
         if j == 0:
@@ -32,9 +31,10 @@ def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
         else:
             eigenvals[offset:offset+j+1] = np.linalg.eigvals(Hess[:j+1,:j+1])
         offset += j + 1
-    #print(Hess)
-    #print(eigenvals)
-    return np.sort(eigenvals)
+    eigenvals = np.sort(eigenvals)
+    return np.array([eigenvals[i] for i in range(len(eigenvals)) if eigenvals[i] == 0] + [
+                    eigenvals[i] for i in range(len(eigenvals)) if eigenvals[i] < 0] + [
+                        eigenvals[i] for i in range(len(eigenvals)) if eigenvals[i] > 0])
 
 def normalizaiton(Z:list):
     '''
@@ -127,16 +127,21 @@ class NewtonWrk:
         seq_existing = self.leja_points
         assert n_choose <= np.size(seq_candidate)
         n = np.size(seq_existing)
-        n_last = n + n_choose
-        seq_new = np.zeros(n_last,dtype=np.complex128)
-        seq_new[:n] = seq_existing
-        n_0 = 0
         if not n:
-            z = np.max(np.abs(seq_candidate))
-            z_loc = np.where(np.abs(seq_candidate) == z)[0][0]
+            n += 1
+            n_last = n + n_choose
+            seq_new = np.zeros(n_last,dtype=np.complex128)
+            z_loc = np.where(np.abs(seq_candidate) == np.max(
+                            np.abs(seq_candidate)))[0][-1]
             seq_new[0] = seq_candidate[z_loc]
-            seq_candidate = np.delete(seq_candidate,z_loc)
+            seq_candidate[z_loc] = seq_candidate[-1]
+            seq_candidate[-1] = seq_new[0]
             n_0 = 1
+        else:
+            n_last = n + n_choose
+            seq_new = np.zeros(n_last,dtype=np.complex128)
+            seq_new[:n] = seq_existing
+            n_0 = 0
         for i_new in range(n_0,n_choose):
             p_max = 0
             i_max = 0
@@ -148,11 +153,9 @@ class NewtonWrk:
                 if p > p_max:
                     p_max = p
                     i_max = i
-            seq_new[n + i_new] = seq_candidate[i_max]
+            seq_new[n + i_new - 1] = seq_candidate[i_max]
             seq_candidate[i_max] = seq_candidate[-1-i_new]
         self.leja_points = seq_new
-        print(f'leja points: {self.leja_points}')
-        return n_last
 
     def ExtendNewtonCoeffs(self,n_leja:int,func):
         '''
@@ -170,86 +173,73 @@ class NewtonWrk:
         if n0 == 0:
             self.a[0] = func(self.leja_points[0])
             n0 = 1
-        for k in range(n0,n_leja):
+        for k in range(n0,n_leja - 1):
             d = 1 + 0j
             pn = 0j
-            for n in range(k - 1):
-                zd = self.leja_points[k] - self.leja_points[n]
-                d *= zd / self.radius
+            for n in range(1,k):
+                zd = self.leja_points[k] - self.leja_points[n - 1]
+                d *= (zd / self.radius)
                 pn += self.a[n] * d
             zd = self.leja_points[k] - self.leja_points[k-1]
-            d *= zd / self.radius
+            d *= (zd / self.radius)
             assert np.abs(d) > 1e-200
             self.a[k] = (func(self.leja_points[k]) - self.a[0] - pn) / d
-        print(f'Newton coeffs: {self.a}')
-        return len(self.a)
 
 
 def Newton(psi,H,dt,func):
     tol = 1e-10
-    max_restarts = 50
+    max_restarts = 10
     dim = np.size(psi)
     wrk = NewtonWrk(10,dim)
     m = wrk.m_max
     R = np.zeros(m+1,dtype=np.complex128)
     P = np.zeros(m+1,dtype=np.complex128)
     R_abs = np.zeros(m+1,dtype=np.float64)
-    n_a = 0
-    n_leja = 0
     assert dt != 0
-    wrk.v = psi
+    wrk.v = copy.deepcopy(psi)
     s = 0
     beta = np.linalg.norm(wrk.v,2)
     wrk.v /= beta
     while True:
-        print(f'iteration: {s}')
         m = wrk.Arnoldi(m,H,dt,True)
         if m == 1 and s == 0:
             L = beta * wrk.Hess[0,0]
             psi *= func(L)
             break
-        ritz = diagonalize_hessenberg_matrix(wrk.Hess,m + 1,True)
-        print(f"ritz: {ritz}")
+        ritz = diagonalize_hessenberg_matrix(wrk.Hess,m,True)
         if s == 0:
             wrk.radius = lejaRadius(ritz)
-        print(f'radius: {wrk.radius}')
-        n_s = n_leja
-        n_leja = wrk.ExtendLeja(ritz,m + 1)
-        n_a = wrk.ExtendNewtonCoeffs(n_leja,func)
-        assert n_a == n_leja
-        if len(R) != m+1:
-            np.resize(R,m+1)
-            np.resize(P,m+1)
-            np.resize(R_abs,m+1)
+        n_s0  = len(wrk.leja_points)
+        wrk.ExtendLeja(ritz,m)
+        n_s = len(wrk.leja_points)
+        wrk.ExtendNewtonCoeffs(n_s,func)
+        assert n_s == len(wrk.a)
         P *= 0
         R *= 0
         R[0] = beta
-        P[0] = wrk.a[n_s] * beta
+        P[0] = wrk.a[n_s0] * beta
         for k in range(1,m):
-            z = wrk.leja_points[n_s+k-1]
+            z = wrk.leja_points[n_s0+k-1]
             R = (np.matmul(wrk.Hess,R) - z * R) / wrk.radius
-            P += wrk.a[n_s+k] * R
+            P += wrk.a[n_s0+k] * R
         if s == 0:
             psi *= 0
         for i in range(m):
             psi += P[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
-        R = (np.matmul(wrk.Hess,R) - wrk.leja_points[n_s+m-1] * R) / wrk.radius
+        R = (np.matmul(wrk.Hess,R) - wrk.leja_points[-1] * R) / wrk.radius
         R_abs = np.abs(R)
-        beta = np.linalg.norm(R_abs)
+        beta = np.linalg.norm(R_abs,2)
         R /= beta
         wrk.arnoldi_vecs[:,0] = wrk.v.T[0]
-        wrk.v *= R[1]
+        wrk.v *= R[0]
         for i in range(1,m+1):
             wrk.v += R[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
-        
-        psi_relerr = beta * np.abs(wrk.a[n_a-1]) / (1+np.linalg.norm(psi,2))
+        psi_relerr = beta * np.abs(wrk.a[-2]) / (1+np.linalg.norm(psi,2))
         if psi_relerr < tol:
             break
         else:
             s += 1
             assert s <= max_restarts
     wrk.restarts = s
-    wrk.n_leja = n_leja
-    wrk.n_a = n_a
     return psi
 
