@@ -128,8 +128,8 @@ class NewtonWrk:
         assert n_choose <= np.size(seq_candidate)
         n = np.size(seq_existing)
         if not n:
-            n += 1
             n_last = n + n_choose
+            n += 1
             seq_new = np.zeros(n_last,dtype=np.complex128)
             z_loc = np.where(np.abs(seq_candidate) == np.max(
                             np.abs(seq_candidate)))[0][-1]
@@ -141,6 +141,7 @@ class NewtonWrk:
             n_last = n + n_choose
             seq_new = np.zeros(n_last,dtype=np.complex128)
             seq_new[:n] = seq_existing
+            n += 1
             n_0 = 0
         for i_new in range(n_0,n_choose):
             p_max = 0
@@ -173,7 +174,7 @@ class NewtonWrk:
         if n0 == 0:
             self.a[0] = func(self.leja_points[0])
             n0 = 1
-        for k in range(n0,n_leja - 1):
+        for k in range(n0,n_leja):
             d = 1 + 0j
             pn = 0j
             for n in range(1,k):
@@ -184,6 +185,9 @@ class NewtonWrk:
             d *= (zd / self.radius)
             assert np.abs(d) > 1e-200
             self.a[k] = (func(self.leja_points[k]) - self.a[0] - pn) / d
+            #if k > 6:
+                #print(f'___________{self.a[k]}__________________')
+                #print(f'{func(self.leja_points[k]) - self.a[0] - pn} {pn}, {d}')
 
 
 def Newton(psi,H,dt,func):
@@ -201,6 +205,7 @@ def Newton(psi,H,dt,func):
     beta = np.linalg.norm(wrk.v,2)
     wrk.v /= beta
     while True:
+        print(f'iteration {s}')
         m = wrk.Arnoldi(m,H,dt,True)
         if m == 1 and s == 0:
             L = beta * wrk.Hess[0,0]
@@ -222,6 +227,7 @@ def Newton(psi,H,dt,func):
             z = wrk.leja_points[n_s0+k-1]
             R = (np.matmul(wrk.Hess,R) - z * R) / wrk.radius
             P += wrk.a[n_s0+k] * R
+        R = np.matmul(wrk.Hess,R) / wrk.radius
         if s == 0:
             psi *= 0
         for i in range(m):
@@ -234,7 +240,14 @@ def Newton(psi,H,dt,func):
         wrk.v *= R[0]
         for i in range(1,m+1):
             wrk.v += R[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
-        psi_relerr = beta * np.abs(wrk.a[-2]) / (1+np.linalg.norm(psi,2))
+        psi_relerr = beta * np.abs(wrk.a[-1]) / (1+np.linalg.norm(psi,2))
+        print(f'relative error: {psi_relerr}')
+        #print(f'norm of the state: {np.linalg.norm(psi,2)}')
+        #print("Newton coeffs")
+        #print(wrk.a)
+        #print("Lehja points")
+        #print(wrk.leja_points)
+        #print(max(np.abs(wrk.a)))
         if psi_relerr < tol:
             break
         else:
