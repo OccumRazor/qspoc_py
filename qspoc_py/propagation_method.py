@@ -1,7 +1,7 @@
 import numpy as np,copy
 from scipy.special import jv,j0,j1
 from scipy.sparse import csr_matrix
-from scipy.linalg import expm,ishermitian
+from scipy.linalg import expm
 
 '''.vscode\
   !! * :cite:`Tal-EzerJCP84`
@@ -62,7 +62,6 @@ def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,backwards = False):
     return final_state
 
 
-
 def Matrix_Exponential(herm_mat,initial_state,dt,backwards = False):
     if isinstance(herm_mat,(list,csr_matrix)):ipt_mat=copy.deepcopy(np.array(herm_mat))
     else:ipt_mat = copy.deepcopy(herm_mat)
@@ -70,11 +69,3 @@ def Matrix_Exponential(herm_mat,initial_state,dt,backwards = False):
     else: 
         Ut = expm(-1j * ipt_mat * dt)
     return Ut.dot(initial_state)
-'''
-def Matrix_Exponential(herm_mat,initial_state):
-    eih = expm(-1j*herm_mat)
-    return eih.dot(initial_state)
-'''
-
-def Newton(initial_state,backwards = False):
-    return 0

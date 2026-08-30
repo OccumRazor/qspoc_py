@@ -1,6 +1,12 @@
+"""
+This is a python implementation of Newton propagation 
+described in 
+Goerz, Michael Hartmut. Optimizing robust quantum gates in open quantum systems. Diss. 2015.
+https://github.com/JuliaQuantumControl/QuantumPropagators.jl
+"""
+
+
 import numpy as np,copy
-from scipy.linalg import expm
-#from . import arnoldi
 
 def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
     '''
@@ -67,8 +73,7 @@ def coeffs_mtp(zs,k,n):
 class NewtonWrk:
     '''
     v: state vector
-    arnoldi_vecs: Array
-    a: OffsetVector Newton Coefficients 
+    a: Newton Coefficients 
     leja_points: OffsetVector
     '''
     def __init__(self,m_max:int,dim:int):
@@ -119,7 +124,6 @@ class NewtonWrk:
         
         Docstring for ExtendLeja
         
-        :param seq_existing: n existing Leha points
         :param seq_candidate: new candidate points (Rizt valutes)
         :param n_choose: number n_choose of points to pick from seq_candidate
 
@@ -162,10 +166,7 @@ class NewtonWrk:
         '''
         Docstring for ExtendNewtonCoeffs
         
-        :param coeffs: coeffs = [c_0...c_(ns-1)] of n_s Newton coefficients from previous iteration
-        :param leja_points: leja_points = [l_0...l_(ns-1+m)] of Leja points
         :param n_leja: choose n_leja from leja_points
-        :param leja_points: normalization radius
         '''
         n0 = len(self.a)
         self.a = np.resize(self.a,n_leja)
@@ -185,12 +186,9 @@ class NewtonWrk:
             d *= (zd / self.radius)
             assert np.abs(d) > 1e-200
             self.a[k] = (func(self.leja_points[k]) - self.a[0] - pn) / d
-            #if k > 6:
-                #print(f'___________{self.a[k]}__________________')
-                #print(f'{func(self.leja_points[k]) - self.a[0] - pn} {pn}, {d}')
 
 
-def Newton(psi,H,dt,func):
+def Newton(H,psi,dt,func,backwards = False):
     tol = 1e-10
     max_restarts = 10
     dim = np.size(psi)
@@ -205,7 +203,6 @@ def Newton(psi,H,dt,func):
     beta = np.linalg.norm(wrk.v,2)
     wrk.v /= beta
     while True:
-        print(f'iteration {s}')
         m = wrk.Arnoldi(m,H,dt,True)
         if m == 1 and s == 0:
             L = beta * wrk.Hess[0,0]
@@ -241,13 +238,6 @@ def Newton(psi,H,dt,func):
         for i in range(1,m+1):
             wrk.v += R[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
         psi_relerr = beta * np.abs(wrk.a[-1]) / (1+np.linalg.norm(psi,2))
-        print(f'relative error: {psi_relerr}')
-        #print(f'norm of the state: {np.linalg.norm(psi,2)}')
-        #print("Newton coeffs")
-        #print(wrk.a)
-        #print("Lehja points")
-        #print(wrk.leja_points)
-        #print(max(np.abs(wrk.a)))
         if psi_relerr < tol:
             break
         else:

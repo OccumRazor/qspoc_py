@@ -1,5 +1,5 @@
 import numpy as np,time,copy,matplotlib.pyplot as plt,random,time 
-from . import localTools,read_write,propagation_method,fft_main,J_T_local,iter_info_manager,Weyl
+from . import localTools,read_write,propagation_method,J_T_local,iter_info_manager,Newton
 from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
@@ -60,7 +60,6 @@ def E_min_max(Hamiltonian,tlist,pulse_options):
     else:
         H_min = Hamiltonian[0]
         H_max = Hamiltonian[0]
-        #ndim = len(Hamiltonian[0])
         ndim = Hamiltonian[0].shape[0]
     for H_i in Hamiltonian[1:]:
         if isinstance(H_i,list):
@@ -175,10 +174,15 @@ class Propagation:
     def propagate_sg(self,dt,t,psi_0,backwards=False):
         psi_0 = copy.deepcopy(psi_0)
         Ht = H_t(self.Hamiltonian,t,self.pulse_options)
-        for i in range(self.n_states):
-            if self.prop_method == 'cheby':
+        if self.prop_method == 'cheby':
+            for i in range(self.n_states):
                 psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
-            if self.prop_method == 'expm':
+        elif self.prop_method == 'Newton':
+            for i in range(self.n_states):
+                psi_0[i] = Newton.Newton(Ht,psi_0,dt,backwards=backwards)
+                propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
+        elif self.prop_method == 'expm':
+            for i in range(self.n_states):
                 psi_0[i] = propagation_method.Matrix_Exponential(Ht,psi_0[i],dt)
         return psi_0
 
@@ -210,9 +214,10 @@ class Propagation:
                     update_table[pulse_k] = 0
                     ga_return.append(0)
                     update_return[pulse_k] = pulse_k(t,self.pulse_options[pulse_k]['args'])
-        Ht = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
-        for i in range(self.n_states):
-            psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt)
+        self.propagate_sg(dt,t,psi_0)
+        #Ht = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
+        #for i in range(self.n_states):
+            #psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt)
         return psi_0,update_return,ga_return
 
     def propagate(self,backwards=False,store_states = False,update=False,chis_t=None,prop_options: dict = {}):
@@ -350,8 +355,6 @@ class Optimization(Propagation):
             self.JT_name = ['JT','tau_re','delta_U']
             self.n_JT = 3
         else:
-            #self.JT = partial(J_T_local.JT_ss,self.target_states)
-            #self.chis = partial(J_T_local.chis_ss,self.target_states)
             self.JT = partial(J_T_local.JT_re,self.target_states)
             self.chis = partial(J_T_local.chis_re,self.target_states)
             self.n_JT = 1
@@ -429,10 +432,6 @@ class Optimization(Propagation):
             chis_t.reverse()
             psi_T,new_controls,ga_int = self.propagate(False,False,True,chis_t)
             tac = time.time()
-            for H_i in self.Hamiltonian:
-                if isinstance(H_i,list):
-                    if self.pulse_options[H_i[1]]['oct_lambda_a'] and 'fft_threshold' in self.pulse_options[H_i[1]].keys():
-                        new_controls[H_i[1]] = fft_main.fft_filter(self.tlist_long,new_controls[H_i[1]],self.pulse_options[H_i[1]]['fft_threshold'])
             psi_T_last_step = copy.deepcopy(psi_T)
             JT_new = self.JT(psi_T)
             if not isinstance(JT_new,list):JT_new = [JT_new]
@@ -447,7 +446,6 @@ class Optimization(Propagation):
                 self.update_control(new_controls)
                 opt_result.store_control(new_controls)
                 if JT_iter[-1] < self.oct_info['JT_conv'] or np.abs(JT_iter[-2] - JT_iter[-1]) < self.oct_info['delta_JT_conv']:
-                    #opt_result.log_stop_info(JT_iter[-1],self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     opt_result.log_stop_info(JT_new,self.oct_info['JT_conv'],np.abs(JT_iter[-2] - JT_iter[-1]),self.oct_info['delta_JT_conv'])
                     break
         if self.psi_T_analysis:
