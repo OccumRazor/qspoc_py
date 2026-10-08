@@ -6,7 +6,6 @@ def del_redundent(folder,black_list):
     files = os.listdir(folder)
     for file in files:
         if any([key_word in file for key_word in black_list]):
-            #print(f'existence of {folder+file}:{os.path.exists(folder+file)}')
             time.sleep(0.2)
             os.remove(folder+file)
     return 0
@@ -32,7 +31,8 @@ def flattop_pulse(T,t_rise,t_fall):
             mask_rise_region = t_val < t_rise
             mask_fall_region = t_val > (T - t_fall)
             mask_constant_region = ~(mask_rise_region | mask_fall_region)
-            output_array = np.empty_like(t_val, dtype=t_val.dtype if t_val.dtype == float else np.float64) # Ensure float output for sin
+            # Ensure float output for sin
+            output_array = np.empty_like(t_val, dtype=t_val.dtype if t_val.dtype == float else np.float64)
             if np.any(mask_rise_region):
                 output_array[mask_rise_region] = sin_sq(t_val[mask_rise_region], T, t_rise, True)
             if np.any(mask_fall_region):
@@ -55,24 +55,10 @@ def flattop_pulse(T,t_rise,t_fall):
             # For this problem, we assume t is numeric (int, float, or np.ndarray)
             raise TypeError("Unsupported type for t. Must be a number or a numpy array.")
     return lambda t:calculate_output(t)
-    #return {'fit_func':lambda t:calculate_output(t)}
 
 def flattop(t, t_start, t_stop, t_rise, t_fall):
     func_obj = flattop_pulse(t_stop,t_rise,t_fall)
     return func_obj(t)
-
-'''
-def flattop(t, t_start, t_stop, t_rise, t_fall):
-    if t_start <= t <= t_stop:
-        f = 1.0
-        if t <= t_start + t_rise:
-            f = blackman(t, t_start, t_start + 2 * t_rise)
-        elif t >= t_stop - t_fall:
-            f = blackman(t, t_stop - 2 * t_fall, t_stop)
-        return f
-    else:
-        return 0.0
-'''
 
 def box(t, t_start, t_stop):
     if t < t_start:
@@ -106,7 +92,7 @@ def half_step_tlist(qdyn_tlist):
         float(qdyn_tlist[0] - dt / 2),
         qdyn_tlist[1] - 1,
         dtype=float,
-    )  #! here the default is np.float 64, it has been changed manually, also in QDYN python package
+    )  #! here the default is np.float 64, it has been changed manually
     return tgrid
 
 def control_generator_S2L(num_qubit, control_source, endTime=None, header=None):
@@ -166,28 +152,6 @@ def abs_wrapper(original_func):
         return np.abs(original_func(t))
     return new_func
 
-'''
-def control_generator_random(n_controls, guess_amps, endTime,positive = False):
-    n_freq = 10
-    control_args = []
-    for i in range(n_controls):
-        if isinstance(guess_amps,list):guess_amp = guess_amps[i]
-        else:guess_amp = guess_amps
-        amps = [guess_amp/n_freq * random.random() for _ in range(n_freq)]
-        freqs = [2*np.pi*(k+1)/endTime for k in range(n_freq)]
-        detupleTlist = np.linspace(0, endTime, 1001)
-        detupleGuess = amps[0] * np.sin(freqs[0]*detupleTlist)
-        for j in range(1,n_freq):
-            detupleGuess += amps[j] * np.sin(freqs[j]*detupleTlist)
-        cubicSpline_fit = interp1d(
-            detupleTlist, detupleGuess, kind="cubic", fill_value="extrapolate"
-        )
-        if positive: 
-            control_args.append({"fit_func": abs_wrapper(cubicSpline_fit)})
-        else:
-            control_args.append({"fit_func": cubicSpline_fit})
-    return control_args
-'''
 
 def control_generator_random(n_controls, guess_amps, endTime,positive = False):
     num_points = 15
@@ -208,12 +172,12 @@ def control_generator_random(n_controls, guess_amps, endTime,positive = False):
     return control_args
 
 sq_dict = {
-    "I": [[1, 0], [0, 1]],
-    "X": [[0, 1], [1, 0]],
-    "Y": [[0, -1j], [1j, 0]],
-    "Z": [[1, 0], [0, -1]],
-    "0": [[1, 0], [0, 0]],
-    "1": [[0, 0], [0, 1]],
+    "I": np.array([[1, 0], [0, 1]]),
+    "X": np.array([[0, 1], [1, 0]]),
+    "Y": np.array([[0, -1j], [1j, 0]]),
+    "Z": np.array([[1, 0], [0, -1]]),
+    "0": np.array([[1, 0], [0, 0]]),
+    "1": np.array([[0, 0], [0, 1]]),
     "H": np.array([[1, 1], [1, -1]]) / np.sqrt(2),
 }
 
@@ -350,8 +314,6 @@ def array_bounds(tlist,pulse_options,Hamiltonian,tlist_long):
     for H_i in Hamiltonian:
         if isinstance(H_i,list):
             if pulse_options[H_i[1]]['oct_lambda_a']:
-                #ub[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_max'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
-                #lb[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_min'] * pulse_options[H_i[1]]['update_shape'](tlist_long)
                 ub[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_max'] * nt
                 lb[x_i*nt:(x_i+1)*nt] = pulse_options[H_i[1]]['oct_pulse_min'] * nt
                 x_i += 1

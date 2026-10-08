@@ -28,7 +28,7 @@ for i in range(100):
     H = test_utils.random_Herm(n)
     psi = test_utils.random_state(n)
 
-    psi_T = Newton.Newton(copy.deepcopy(psi),H,dt,func)
+    psi_T = Newton.Newton(H,copy.deepcopy(psi),dt,func)
     #print(psi_T)
     psi_t = propagation_method.Matrix_Exponential(H,psi,dt)
     #print(psi_t)

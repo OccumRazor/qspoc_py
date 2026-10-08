@@ -49,7 +49,6 @@ def JT_re(refs,states):
 def J_T_abs(state,ref):
     return 1-np.abs(tau(state,ref))
 
-#def chis_tau(state,ref):
 def chis_tau(ref,state):
     return ref
 

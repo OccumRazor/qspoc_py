@@ -79,7 +79,7 @@ def E_min_max(Hamiltonian,tlist,pulse_options):
     E_max = max([max(eig_vals_0),max(eig_vals_1)])
     return E_max,E_min
 
-def H_t(Hamiltonian,t,pulse_options,update_table=None):
+def H_t(Hamiltonian,c_ops,t,pulse_options,update_table=None):
     Hamiltonian = copy.deepcopy(Hamiltonian)
     assert isinstance(Hamiltonian,list) and len(Hamiltonian) > 0
     if isinstance(Hamiltonian[0],list):
@@ -95,6 +95,9 @@ def H_t(Hamiltonian,t,pulse_options,update_table=None):
             Ht += (H_i[1](t,pulse_options[H_i[1]]['args']) + update_amp) * H_i[0]
         else:
             Ht += H_i
+    if isinstance(c_ops,list):
+        for c_op in c_ops:
+            Ht += c_op
     return Ht
 
 def sparsity(Hamiltonian):
@@ -133,7 +136,7 @@ class Propagation:
         self.c_ops = None
         self.shape_function()
         self.sparsity = sparsity(self.Hamiltonian)
-        if self.sparsity > 0.85 and prop_method != 'expm':self.Hamiltonian = sparse_Ham(self.Hamiltonian)
+        if self.sparsity > 0.85 and prop_method == 'cheby':self.Hamiltonian = sparse_Ham(self.Hamiltonian)
         self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options)
     
     def add_dissipator(self,c_ops):
@@ -173,7 +176,7 @@ class Propagation:
 
     def propagate_sg(self,dt,t,psi_0,backwards=False):
         psi_0 = copy.deepcopy(psi_0)
-        Ht = H_t(self.Hamiltonian,t,self.pulse_options)
+        Ht = H_t(self.Hamiltonian,self.c_ops,t,self.pulse_options)
         if self.prop_method == 'cheby':
             for i in range(self.n_states):
                 psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
@@ -215,9 +218,6 @@ class Propagation:
                     ga_return.append(0)
                     update_return[pulse_k] = pulse_k(t,self.pulse_options[pulse_k]['args'])
         self.propagate_sg(dt,t,psi_0)
-        #Ht = H_t(self.Hamiltonian,t,self.pulse_options,update_table)
-        #for i in range(self.n_states):
-            #psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt)
         return psi_0,update_return,ga_return
 
     def propagate(self,backwards=False,store_states = False,update=False,chis_t=None,prop_options: dict = {}):
@@ -410,6 +410,11 @@ class Optimization(Propagation):
             config_file.write(config_text)
 
     def Krotov_optimization(self,runfolder = None, monotonic = False):
+        '''
+        For details of Krotov's method, see
+        D.J. Tannor, V. Kazakov, and V. Orlov. Control of photochemical branching: novel procedures for finding optimal pulses and global upper bounds. In J. Broeckhove and L. Lathouwers, editors, Time-dependent quantum molecular dynamics, pages 347–360. Plenum (1992).
+        D. M. Reich, M. Ndong, and C. P. Koch. Monotonically convergent optimization in quantum control using Krotov’s method. J. Chem. Phys. 136, 104103 (2012). doi:10.1063/1.3691827.
+        '''
         if runfolder:
             self.config_opt(runfolder)
         opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
@@ -492,6 +497,10 @@ class Optimization(Propagation):
         return new_pulses,sum(ga)/len(ga)
 
     def GRAPE(self,runfolder = None, monotonic = False):
+        '''
+        For details of GRAPE, see
+        Khaneja, Navin, et al. "Optimal control of coupled spin dynamics: design of NMR pulse sequences by gradient ascent algorithms." Journal of magnetic resonance 172.2 (2005): 296-305.
+        '''
         if runfolder:
             self.config_opt(runfolder)
         opt_result_options = iter_info_manager.Opt_result_options(False,False,'last')
@@ -540,7 +549,7 @@ class Optimization(Propagation):
 
     def GRAPE_Grad(self,psi_t,lambda_t,order=2):
         '''
-        Order: int should equal 
+        Order: int, either 1 or 2.
         '''
         assert order in [1,2], f'order should euqal either 1 or 2. Input order: {order}'
         psi_t = copy.deepcopy(psi_t)
@@ -560,10 +569,10 @@ class Optimization(Propagation):
                 if self.pulse_options[pulse_i]['oct_lambda_a']:
                     for i in range(self.tlist[-1] - 1):
                         update_table[pulse_i] = h
-                        Hip = H_t(self.Hamiltonian,self.tlist_long[i],self.pulse_options,update_table)
+                        Hip = H_t(self.Hamiltonian,self.c_ops,self.tlist_long[i],self.pulse_options,update_table)
                         if order == 2:
                             update_table[pulse_i] = -h
-                            Him = H_t(self.Hamiltonian,self.tlist_long[i],self.pulse_options,update_table)
+                            Him = H_t(self.Hamiltonian,self.c_ops,self.tlist_long[i],self.pulse_options,update_table)
                         update_table[pulse_i] = 0
                         grad_i = 0.
                         for j in range(self.n_states):
@@ -607,6 +616,11 @@ class Optimization(Propagation):
         return scipy_monitor
     
     def Nelder_Mead(self,runfolder,options):
+        '''
+        For details of Nea=lder-Mead and Chopped random basis optimization, see
+        Nelder, John A., and Roger Mead. "A simplex method for function minimization." The computer journal 7.4 (1965): 308-313.
+        Caneva, Tommaso, Tommaso Calarco, and Simone Montangero. "Chopped random-basis quantum optimization." Physical Review A—Atomic, Molecular, and Optical Physics 84.2 (2011): 022326.
+        '''
         if 'n_params' in options.keys():
             n_params = options['n_params']
         else:

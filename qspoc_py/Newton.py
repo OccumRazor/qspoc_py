@@ -13,7 +13,6 @@ def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
     Docstring for diagonalize_hessenberg_matrix
 
     Diagonalize the m x m top left sub-matrix of a given Hessenberg matrix
-
     '''
     j_min = m - 1
     j_max = m

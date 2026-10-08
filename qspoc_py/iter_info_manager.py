@@ -142,7 +142,8 @@ class Opt_result(Iter_info):
     def write_pulse(self):
         pulses = self.obtain_pulse_real_sequence()
         for i in range(len(pulses)):
-            if pulses[i][1]: # If oct_lambda_a == 0, do not print pulse.
+            # Only print pulses with non-zero oct_lambda_a
+            if pulses[i][1]: 
                 control_text = read_write.control2text(self.tlist_long,pulses[i][0])
                 with open(self.runfolder+f'pulse_oct_{i}.dat','w') as pulse_f:
                     pulse_f.write(control_text)
@@ -226,7 +227,6 @@ class Opt_result(Iter_info):
 
 
 class Monitor(Opt_result):
-    #def __init__(self,iter_stop,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,direction,func,x0,iter_stop,runfolder,n_JT,JT_name):
     def __init__(self,iter_stop,tlist,tlist_long,Hamiltonian,pulse_options,options:Opt_result_options,runfolder,n_JT,JT_names,functional_info,func,x0,approx_grad=False,order = 2):
         super().__init__(iter_stop,tlist_long,Hamiltonian,pulse_options,options,runfolder,n_JT,JT_names,0,functional_info)
         self.iter_stop = iter_stop
@@ -261,7 +261,6 @@ class Monitor(Opt_result):
         self.psi_T = psi_T
         self.t_log.append(time.time())
         dt = self.t_log[-1] - self.t_log[-2]
-        #self.iter_log.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
         self.log_iter_info(self.iters,self.JT_new,dt,ga_int=0)
         self.iters += 1
 
@@ -279,7 +278,6 @@ class Monitor(Opt_result):
         self.last_control = x
         self.t_log.append(time.time())
         dt = self.t_log[-1] - self.t_log[-2]
-        #self.iter_log.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1],ga_int=ga_int)
         self.log_iter_info(self.iters,self.JT_new,dt,JT_last=self.JT_iter[-1][0],ga_int=ga_int)
         new_controls = localTools.array2control(x,self.tlist,self.pulse_options,self.Hamiltonian,self.tlist_long)
         self.store_control(new_controls)

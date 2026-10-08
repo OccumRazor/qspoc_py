@@ -17,22 +17,10 @@ def log_factorial(num):
         result += np.log10(i)
     return result
 
-
-def BF(k,l,x):
-    return ((-1)**l)*10**((2*l+k)*np.log10(x/2) - log_factorial(l) - log_factorial(k+l))
-def Bessel_function(num,k,lower_bound=1e-17):
-    l = 0
-    coe_amp = BF(k,l,num)
-    coefficient = coe_amp
-    while np.abs(coe_amp) > lower_bound:
-        l += 1
-        coe_amp = BF(k,l,num)
-        coefficient += coe_amp
-    return coefficient
-
-
 def Chebyshev(herm_mat,initial_state,E_max,E_min,dt,backwards = False):
     '''
+    Utilizing Chebyshev polynomials to approximately solve Schroedinger equation 
+    psi_t1 = exp(-1j * herm_mat) * herm_mat
     herm_mat: H(t), where t is not passed to Chebyshev().
     '''
     Delta = E_max - E_min

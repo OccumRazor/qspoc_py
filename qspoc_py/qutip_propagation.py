@@ -1,4 +1,4 @@
-import qutip,numpy as np,matplotlib.pyplot as plt
+import qutip,numpy as np,matplotlib.pyplot as plt,time
 from . import task_obj,J_T_local,localTools
 
 def plot_pulses(qutip_Ham,tlist):
@@ -26,8 +26,6 @@ def qutip_c_ops(c_ops):
     for c_op in c_ops:
         new_ops.append(qutip.Qobj(c_op))
     return new_ops
-
-import time
 
 def qutip_prop_sg(prop:task_obj.Propagation):
     T = prop.tlist[0]

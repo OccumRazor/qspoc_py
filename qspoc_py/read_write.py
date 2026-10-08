@@ -164,9 +164,3 @@ def controlReader(file_name):
     tlist = tlist.T[0]
     control = control.T[0]
     return tlist,control
-    try:
-        control_imag = np.loadtxt(file_name, usecols=(2))
-        control = np.complex128(control)
-        control += 1j * control_imag
-        return tlist,control
-    except Exception:return tlist,control

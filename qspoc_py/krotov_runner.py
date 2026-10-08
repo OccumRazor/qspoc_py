@@ -72,24 +72,4 @@ def Krotov_call(num_qubit,T,canoLabel,JT,control_source = None, header = None):
             iter_stop=1000,store_all_pulses=True)
     return opt_result
 
-num_qubit = 4
-#T=21.0
-#H=localTools.Hamiltonian(num_qubit)
-#print(H)
-#Krotov_config_runfolder('control_source/rf2/',[0,20,801])
-#Krotov_run('control_source/rf2/')
-T = 20.75
-canoLabel = '6+'
-Krotov_call(4,T,canoLabel,0)
-#Krotov_call(4,T,canoLabel,0,f'control_source/{T}/','pulse_oct')
-
-#opt_obj.config('control_source/rf112/')
-#print(opt_obj.tlist_long)
-#print(opt_obj.tlist)
-#opt_obj.Krotov_run('control_source/rf112/','inFidelity')
-#psi_f = opt_obj.propagate()
-#print(psi_f)
-#print(J_T_local.inFidelity(psi_f[0],opt_obj.target_states[0]))
-#opt_result=Krotov_call(num_qubit,T,'0+',0,'control_source/21.0/','pulse_initial')
-#opt_result=store_intermediate_state(num_qubit,T,'0+',0,'control_source/21.0/','pulse_oct')
 
