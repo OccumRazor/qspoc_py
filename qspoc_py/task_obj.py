@@ -4,7 +4,7 @@ from functools import partial
 from pathlib import Path
 from scipy.interpolate import interp1d
 from scipy.sparse.linalg import eigsh
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix,kron,diags_array
 
 str2float_keys = ['oct_lambda_a','t_start','t_stop','t_rise','t_fall','oct_pulse_min','oct_pulse_max']
 function_keys = ['args','update_shape']
@@ -115,28 +115,56 @@ def sparsity(Hamiltonian):
     Hr = csr_matrix(Hr)
     return 1 - Hr.nnz/(Hr.shape[0] * Hr.shape[1])
 
-def sparse_Ham(Hamiltonian):
+def sparse_Ham(Hamiltonian,c_ops):
     for i in range(len(Hamiltonian)):
         if isinstance(Hamiltonian[i],list):
             Hamiltonian[i][0] = csr_matrix(Hamiltonian[i][0])
         else:
             Hamiltonian[i] = csr_matrix(Hamiltonian[i])
-    return Hamiltonian
+    if c_ops:
+        for i in range(len(c_ops)):
+            c_ops[i] = csr_matrix(c_ops[i])
+    return Hamiltonian,c_ops
+
+def vecing(Hamiltonian,c_ops,states,dim):
+    '''
+    Three approaches for representing Lindblad dynamics by a matrix-vector notation
+    https://doi.org/10.48550/arXiv.1510.08634
+    '''
+    ID_mat = diags_array(np.ones(dim))
+    ID_mat.T.conj()
+    for i in range(len(Hamiltonian)):
+        if isinstance(Hamiltonian[i],list):
+            Hamiltonian[i][0] = kron(ID_mat,Hamiltonian[i][0]) - kron(Hamiltonian[i][0].T,ID_mat)
+        else:
+            Hamiltonian[i] = kron(ID_mat,Hamiltonian[i]) - kron(Hamiltonian[i].T,ID_mat)
+    if c_ops:
+        for i in range(len(c_ops)):
+            c_squared = c_ops[i].conj() * c_ops[i]
+            c_ops[i] = kron(c_ops[i].T.conj(),c_ops[i]) - .5 * kron(ID_mat,c_squared) - .5 * kron(c_squared.T,ID_mat)
+    rhos = [np.outer(states[i],states[i].conj()).T.reshape(dim**2,1) for i in range(len(states))]
+    return Hamiltonian,c_ops,rhos
 
 class Propagation:
-    def __init__(self,Hamiltonian,tlist,prop_method,initial_states,pulse_name,pulse_options = None):
+    def __init__(self,Hamiltonian,tlist,prop_method,initial_states,pulse_name='pulse',pulse_options=None,c_ops = None,):
         self.Hamiltonian = Hamiltonian
         self.tlist = tlist
         self.tlist_long = localTools.half_step_tlist(self.tlist)
         self.prop_method = prop_method
         self.n_states = len(initial_states)
         self.initial_states = initial_states
+        self.system_dimension = self.initial_states[0].size
         self.pulse_name = pulse_name
         self.pulse_options = pulse_options
-        self.c_ops = None
+        self.c_ops = c_ops
         self.shape_function()
         self.sparsity = sparsity(self.Hamiltonian)
-        if self.sparsity > 0.85 and prop_method == 'cheby':self.Hamiltonian = sparse_Ham(self.Hamiltonian)
+        #if self.sparsity > 0.85 and prop_method == 'cheby':self.Hamiltonian = sparse_Ham(self.Hamiltonian)
+        if self.sparsity > 0.85 and prop_method != 'expm' or self.c_ops:
+            self.Hamiltonian,self.c_ops = sparse_Ham(self.Hamiltonian,self.c_ops)
+        if self.c_ops:
+            #self.Hamiltonian,self.c_ops,self.initial_dms = vecing(self.Hamiltonian,self.c_ops,self.system_dimension)
+            self.Hamiltonian,self.c_ops,self.initial_states = vecing(self.Hamiltonian,self.c_ops,self.initial_states,self.system_dimension)
         self.E_max,self.E_min = E_min_max(self.Hamiltonian,self.tlist_long,self.pulse_options)
     
     def add_dissipator(self,c_ops):
@@ -182,8 +210,8 @@ class Propagation:
                 psi_0[i] = propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
         elif self.prop_method == 'Newton':
             for i in range(self.n_states):
-                psi_0[i] = Newton.Newton(Ht,psi_0,dt,backwards=backwards)
-                propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
+                psi_0[i] = Newton.Newton(Ht,psi_0[i],dt,backwards=backwards)
+                #propagation_method.Chebyshev(Ht,psi_0[i],self.E_max,self.E_min,dt,backwards=backwards)
         elif self.prop_method == 'expm':
             for i in range(self.n_states):
                 psi_0[i] = propagation_method.Matrix_Exponential(Ht,psi_0[i],dt)

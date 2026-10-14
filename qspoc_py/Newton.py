@@ -7,6 +7,7 @@ https://github.com/JuliaQuantumControl/QuantumPropagators.jl
 
 
 import numpy as np,copy
+from scipy.linalg import expm
 
 def diagonalize_hessenberg_matrix(Hess,m,accumulate = False):
     '''
@@ -78,7 +79,8 @@ class NewtonWrk:
     def __init__(self,m_max:int,dim:int):
         self.m_max = m_max
         self.v = np.zeros(dim,dtype=np.complex128)
-        self.arnoldi_vecs = np.zeros([dim,m_max+1],dtype = np.complex128)
+        #self.arnoldi_vecs = np.zeros([dim,m_max+1],dtype = np.complex128)
+        self.arnoldi_vecs = [1] * (m_max + 1)
         self.Hess = np.zeros([m_max+1,m_max+1],dtype = np.complex128)
         self.a = np.zeros(0,dtype=np.complex128)
         self.leja_points = np.zeros(0,dtype=np.complex128)
@@ -91,30 +93,40 @@ class NewtonWrk:
         dim_hess = m
         if extended: dim_hess += 1
         self.Hess *= 0
-        self.arnoldi_vecs[:,0] = self.v.T
+        #self.arnoldi_vecs[:,0] = self.v.T
+        self.arnoldi_vecs[0] = self.v
         for i in range(m):
-            self.arnoldi_vecs[:,i+1] = np.matmul(H,self.arnoldi_vecs[:,i])
+            #self.arnoldi_vecs[:,i+1] = np.matmul(H,self.arnoldi_vecs[:,i])
+            #self.arnoldi_vecs[i+1] = np.matmul(H,self.arnoldi_vecs[i])
+            self.arnoldi_vecs[i+1] = H.dot(self.arnoldi_vecs[i])
             for j in range(i+1):
-                self.Hess[j,i] = np.inner(np.conj(self.arnoldi_vecs[:,j]),self.arnoldi_vecs[:,i+1]) * dt
-                self.arnoldi_vecs[:,i+1] -= self.arnoldi_vecs[:,j] * self.Hess[j,i] / dt
+                #self.Hess[j,i] = np.inner(np.conj(self.arnoldi_vecs[:,j]),self.arnoldi_vecs[:,i+1]) * dt
+                #self.arnoldi_vecs[:,i+1] -= self.arnoldi_vecs[:,j] * self.Hess[j,i] / dt
+                self.Hess[j,i] = np.inner(np.conj(self.arnoldi_vecs[j]).T[0],self.arnoldi_vecs[i+1].T[0]) * dt
+                self.arnoldi_vecs[i+1] -= self.arnoldi_vecs[j] * self.Hess[j,i] / dt
             if i < (m-1) or extended:
-                h = np.linalg.norm(self.arnoldi_vecs[:,i+1],2)
+                #h = np.linalg.norm(self.arnoldi_vecs[:,i+1],2)
+                h = np.linalg.norm(self.arnoldi_vecs[i+1],2)
                 self.Hess[i+1,i] = dt * h
                 if h < tol:
                     m = j + 1
                     break
-                self.arnoldi_vecs[:,i+1] *= 1/h
+                #self.arnoldi_vecs[:,i+1] *= 1/h
+                self.arnoldi_vecs[i+1] *= 1/h
         return m
 
     def extend_arnoldi(self,m,H,dt,tol = 1e-15):
         h = np.linalg.norm(self.arnoldi_vecs[m],2)
         if h < tol: return m
         self.Hess[m-1,m-2] = dt * h
-        self.arnoldi_vecs[:,m-1] *= 1/h
-        self.arnoldi_vecs[:,m] = np.matmul(H,self.arnoldi_vecs[:,m-1])
+        #self.arnoldi_vecs[:,m-1] *= 1/h
+        #self.arnoldi_vecs[:,m] = np.matmul(H,self.arnoldi_vecs[:,m-1])
+        self.arnoldi_vecs[m-1] *= 1/h
+        self.arnoldi_vecs[m] = np.matmul(H,self.arnoldi_vecs[m-1])
         for i in range(m):
             self.Hess[i,m-1] = dt * np.inner(self.arnoldi_vecs[:,i],np.conj(self.arnoldi_vecs[:,m]))
-            self.arnoldi_vecs[:,m] -= self.Hess[i][m-1] / dt * self.arnoldi_vecs[:,i]
+            #self.arnoldi_vecs[:,m] -= self.Hess[i][m-1] / dt * self.arnoldi_vecs[:,i]
+            self.arnoldi_vecs[m] -= self.Hess[i][m-1] / dt * self.arnoldi_vecs[i]
         assert all([self.Hess[m-1][i] == 0 for i in range(len(self.Hess[m-1]))])
         return self.Hess
 
@@ -187,7 +199,10 @@ class NewtonWrk:
             self.a[k] = (func(self.leja_points[k]) - self.a[0] - pn) / d
 
 
-def Newton(H,psi,dt,func,backwards = False):
+def func_default(z):
+    return expm(z)
+
+def Newton(H,psi,dt,func = func_default,backwards = False):
     tol = 1e-10
     max_restarts = 10
     dim = np.size(psi)
@@ -198,6 +213,7 @@ def Newton(H,psi,dt,func,backwards = False):
     R_abs = np.zeros(m+1,dtype=np.float64)
     assert dt != 0
     wrk.v = copy.deepcopy(psi)
+    if backwards: dt *= -1
     s = 0
     beta = np.linalg.norm(wrk.v,2)
     wrk.v /= beta
@@ -227,15 +243,18 @@ def Newton(H,psi,dt,func,backwards = False):
         if s == 0:
             psi *= 0
         for i in range(m):
-            psi += P[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
+            #psi += P[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
+            psi += P[i] * np.reshape(wrk.arnoldi_vecs[i],(dim,1))
         R = (np.matmul(wrk.Hess,R) - wrk.leja_points[-1] * R) / wrk.radius
         R_abs = np.abs(R)
         beta = np.linalg.norm(R_abs,2)
         R /= beta
-        wrk.arnoldi_vecs[:,0] = wrk.v.T[0]
+        #wrk.arnoldi_vecs[:,0] = wrk.v.T[0]
+        wrk.arnoldi_vecs[0] = wrk.v.T[0]
         wrk.v *= R[0]
         for i in range(1,m+1):
-            wrk.v += R[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
+            #wrk.v += R[i] * np.reshape(wrk.arnoldi_vecs[:,i],(dim,1))
+            wrk.v += R[i] * np.reshape(wrk.arnoldi_vecs[i],(dim,1))
         psi_relerr = beta * np.abs(wrk.a[-1]) / (1+np.linalg.norm(psi,2))
         if psi_relerr < tol:
             break
